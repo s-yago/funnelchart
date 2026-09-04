@@ -284,6 +284,13 @@ table.d .empty{color:#888; font-size:14px; padding:14px}
   </details>
 
   <details class="box">
+    <summary>共有データ（全員共通）</summary>
+    <p class="hint">成約データと小学校区データは、このページに置いた共有ファイルから自動で読み込まれます。誰かが更新すれば、次に開いた全員に反映されます。</p>
+    <p class="status" id="sharedStat"></p>
+    <div class="btns"><button class="sub" id="btnShared">共有データを読み込み直す</button></div>
+  </details>
+
+  <details class="box">
     <summary>バックアップ・削除</summary>
     <div class="btns">
       <button class="sub" id="btnExport">データを書き出す</button>
@@ -931,7 +938,10 @@ function relaxSuggestions(stock, steps, dropIdx, want){
    ここから画面（保存・描画・印刷）
    ================================================================== */
 const K = { sold_m:'vivi_funnel_sold_mansion', sold_k:'vivi_funnel_sold_kodate',
-            school:'vivi_funnel_school', ov:'vivi_funnel_override' };
+            school:'vivi_funnel_school', ov:'vivi_funnel_override',
+            sv:'vivi_funnel_shared_version' };
+/* リポジトリに置いた共有データ。ページを開いたときに自動で読み込む */
+const SHARED_URL = './data/funnel-data.json';
 const $ = id => document.getElementById(id);
 const PAL = ['#1f4e79','#28598a','#31699b','#3d78ab','#4c8abf','#5b9bd5','#7fb1de'];
 let STOCK = [];
@@ -1030,6 +1040,27 @@ function yearSpan(recs){
   return { from, to, years: to - from + 1 };
 }
 
+/* 全員で使う共有データを読み込む（同じ版なら何もしない） */
+async function loadShared(force){
+  try {
+    const res = await fetch(SHARED_URL + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return false;
+    const d = await res.json();
+    const ver = String(d.version || d.exported || '');
+    if (!force && localStorage.getItem(K.sv) === ver && load(K.school)) return false;
+    if (d.sold_mansion) store(K.sold_m, d.sold_mansion);
+    if (d.sold_kodate) store(K.sold_k, d.sold_kodate);
+    if (d.school) store(K.school, d.school);
+    if (d.override) store(K.ov, d.override);
+    localStorage.setItem(K.sv, ver);
+    refreshStatus();
+    log('共有データを読み込みました（' + (ver || '版の記載なし') + '）');
+    return true;
+  } catch (e) {
+    return false;      // 共有データが置かれていなければ何もしない
+  }
+}
+
 /* ---------- 保存データの状態表示 ---------- */
 function refreshStatus(){
   const sm = load(K.sold_m), sk = load(K.sold_k), sc = load(K.school), ov = load(K.ov);
@@ -1044,6 +1075,10 @@ function refreshStatus(){
   $('kuikiStat').innerHTML = sc
     ? '登録済み：<b>小学校区' + sc.sho_list.length + '／町名' + Object.keys(sc.towns).length + '</b>'
     : '<span class="ng">未登録</span>（小学校区での絞り込みには必要です）';
+  const sv = localStorage.getItem(K.sv);
+  if ($('sharedStat')) $('sharedStat').innerHTML = sv
+    ? '共有データ：<b>' + sv + ' の版</b>を読み込み済み'
+    : '共有データ：<b>未読込</b>（このページに共有データが置かれていない可能性があります）';
   $('ovStat').textContent = ov
     ? '登録済み：建物' + (ov.mansions || []).length + '件／町名' + (ov.kodate_towns || []).length + '件'
     : '未登録';
@@ -1355,6 +1390,7 @@ function setStock(recs, src){
 
 window.addEventListener('DOMContentLoaded', () => {
   refreshStatus(); fitSheet();
+  loadShared(false);          // 共有データがあれば自動で取り込む
 
   $('kind').addEventListener('change', () => {
     $('labAreaMin').textContent = ($('kind').value === '戸建て' ? '建物' : '専有') + '面積の下限（㎡）';
@@ -1479,6 +1515,10 @@ window.addEventListener('DOMContentLoaded', () => {
     refreshStatus(); log('保存データを消しました');
   });
 
+  $('btnShared').addEventListener('click', async () => {
+    const ok = await loadShared(true);
+    if (!ok) alert('共有データを読み込めませんでした。data/funnel-data.json が置かれているかご確認ください。');
+  });
   $('btnMake').addEventListener('click', makeSheet);
   $('relaxClose').addEventListener('click', () => { $('relaxBox').style.display = 'none'; });
   $('relaxBox').addEventListener('click', e => {
