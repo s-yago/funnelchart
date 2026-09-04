@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>物件希少性ファネルチャート｜ViVi不動産</title>
+<style>
+:root{
+  --navy:#1f4e79; --navy2:#31699b; --navy3:#5b9bd5;
+  --gold:#bf9000; --gold-bg:#fff2cc; --gold-txt:#7f6000;
+  --line:#d5d5d5; --alt:#f2f7fc; --ink:#222; --muted:#777;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:#eef2f6; color:var(--ink);
+  font-family:"Yu Gothic","Hiragino Sans","Noto Sans JP","Meiryo",sans-serif;
+  font-size:17px; line-height:1.7;
+}
+header.app{
+  background:var(--navy); color:#fff; padding:14px 20px;
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+}
+header.app h1{font-size:22px; margin:0; font-weight:700}
+header.app .sub{font-size:14px; opacity:.85}
+.wrap{display:flex; gap:18px; padding:18px; align-items:flex-start; flex-wrap:wrap}
+.panel{
+  flex:0 0 430px; background:#fff; border-radius:10px; padding:16px 18px;
+  box-shadow:0 1px 4px rgba(0,0,0,.12);
+}
+.preview{flex:1 1 620px; min-width:520px}
+h2.sec{
+  font-size:18px; color:var(--navy); margin:22px 0 10px; padding-bottom:6px;
+  border-bottom:2px solid var(--navy);
+}
+h2.sec:first-child{margin-top:4px}
+label.f{display:block; font-size:15px; font-weight:700; margin:12px 0 4px; color:#333}
+input[type=text],input[type=number],select,textarea{
+  width:100%; padding:9px 10px; font-size:17px; border:1px solid #b9c4cf;
+  border-radius:6px; font-family:inherit; background:#fff;
+}
+textarea{min-height:110px; font-size:13px; font-family:ui-monospace,Menlo,Consolas,monospace}
+.row2{display:flex; gap:10px}
+.row2>*{flex:1}
+button{
+  font-family:inherit; font-size:16px; font-weight:700; padding:10px 14px;
+  border-radius:7px; border:none; cursor:pointer; background:var(--navy); color:#fff;
+}
+button.sub{background:#e8eef4; color:var(--navy); border:1px solid #b9c4cf}
+button.gold{background:var(--gold); color:#fff}
+button:disabled{opacity:.45; cursor:not-allowed}
+.btns{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap}
+.status{font-size:14px; margin:6px 0 0; color:var(--muted)}
+.status b{color:var(--navy)}
+.ok{color:#1b6b2f; font-weight:700}
+.ng{color:#a33; font-weight:700}
+details.box{border:1px solid #d3dbe3; border-radius:8px; padding:10px 12px; margin-top:10px; background:#fafcfe}
+details.box>summary{cursor:pointer; font-weight:700; color:var(--navy); font-size:16px}
+.hint{font-size:13px; color:var(--muted); margin:6px 0 0}
+.file{font-size:14px}
+#log{white-space:pre-wrap; font-size:13px; color:#444; background:#f6f8fa; border-radius:6px;
+     padding:8px 10px; margin-top:10px; max-height:150px; overflow:auto}
+
+/* ===== A4横シート ===== */
+.stagebox{background:#fff; box-shadow:0 1px 6px rgba(0,0,0,.18); overflow:hidden; border-radius:6px}
+.sheetscale{transform-origin:top left}
+.sheet{
+  width:297mm; height:210mm; padding:9mm 10mm; background:#fff; color:var(--ink);
+  display:flex; flex-direction:column; position:relative;
+}
+.sheet .title{font-size:26px; font-weight:700; color:var(--navy); line-height:1.25}
+.sheet .subtitle{font-size:13px; color:#555; margin-top:2px}
+.sheet .hr{height:2px; background:var(--navy); margin:6px 0 8px}
+.sheet .main{display:flex; gap:9mm; flex:1; min-height:0; overflow:hidden}
+.sheet .left{width:36%; height:100%; min-height:0; display:flex; flex-direction:column}
+.sheet .right{flex:1; min-width:0; height:100%; min-height:0; overflow:hidden}
+.sheet h3{
+  font-size:16px; color:var(--navy); margin:0 0 5px; font-weight:700;
+}
+.sheet h3+table{margin-bottom:2px}
+.sheet .note{font-size:12.5px; color:var(--gold-txt); font-weight:700; margin:3px 0 12px}
+table.d{width:100%; border-collapse:collapse; table-layout:fixed}
+table.d th{background:var(--navy); color:#fff; font-size:13px; font-weight:700; padding:4px 3px}
+table.d td{font-size:13.5px; padding:4px 3px; text-align:center; border:1px solid var(--line);
+           overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+table.d th{border:1px solid var(--line)}
+table.d tr:nth-child(even) td{background:var(--alt)}
+table.d td.num{text-align:right; padding-right:8px}
+table.d td.name{text-align:left; padding-left:8px}
+table.d .empty{color:#888; font-size:14px; padding:14px}
+
+/* ファネル */
+.funnel{flex:1; min-height:0; display:flex; flex-direction:column; justify-content:flex-start}
+.fstage{display:flex; align-items:stretch; gap:6px}
+.fbar{flex:1; position:relative; display:flex; flex-direction:column; align-items:center;
+      justify-content:center; color:#fff; text-align:center; min-height:0}
+.fbar .lab{font-size:13px; font-weight:700; line-height:1.25; padding:0 6px; position:relative; z-index:1}
+.fbar .val{font-size:19px; font-weight:700; line-height:1.2; position:relative; z-index:1}
+.fbar.last .val{font-size:27px}
+.fbar .bg{position:absolute; inset:0}
+.fpct{width:56px; display:flex; align-items:center; justify-content:flex-end;
+      font-size:13.5px; color:#444; font-weight:700}
+.arrow{position:absolute; right:-2px; top:50%; transform:translateY(-50%); z-index:2}
+
+/* コメント帯 */
+.band{
+  background:var(--gold-bg); border:2px solid var(--gold); border-radius:8px;
+  padding:9px 14px; margin-top:6px;
+}
+.band .b1{font-size:20px; font-weight:700; color:var(--gold-txt); line-height:1.45}
+.band .b1 .big{font-size:27px; color:#b45309}
+.band p{margin:2px 0 0; font-size:16px; color:var(--gold-txt); line-height:1.5}
+.band p .em{font-weight:700; font-size:18px; color:#b45309}
+.band p.warn{font-size:14.5px}
+.foot{font-size:11.5px; color:#888; margin-top:5px}
+.foot .school{color:var(--gold-txt); font-size:12.5px; display:block; margin-bottom:2px}
+
+@media print{
+  @page{size:A4 landscape; margin:0}
+  body{background:#fff}
+  .noprint{display:none !important}
+  .wrap{padding:0; display:block}
+  .preview{min-width:0}
+  .stagebox{box-shadow:none; border-radius:0}
+  .sheetscale{transform:none !important}
+  .sheet{width:297mm; height:210mm; page-break-after:avoid}
+}
+</style>
+</head>
+<body>
+
+<header class="app noprint">
+  <h1>物件希少性ファネルチャート</h1>
+  <span class="sub">REINSの売出・成約データから、商談用A4シートを作成</span>
+</header>
+
+<div class="wrap">
+<!-- ============ 操作パネル ============ -->
+<div class="panel noprint">
+
+  <h2 class="sec">① 売出データ（今回の商談分）</h2>
+  <label class="f">REINSの売出PDF</label>
+  <input type="file" id="stockPdf" accept="application/pdf,.json" class="file">
+  <p class="hint">前に読み込んだデータを書き出したJSONも指定できます。</p>
+  <details class="box">
+    <summary>PDFが読めないときはテキストを貼り付け</summary>
+    <p class="hint">コマンドが使える場合は <code>pdftotext -layout 売出.pdf 売出.txt</code> の結果を貼ってください。</p>
+    <textarea id="stockText" placeholder="ここにREINSの検索結果テキストを貼り付け"></textarea>
+    <div class="btns"><button class="sub" id="btnStockText">貼り付けたテキストを読み込む</button></div>
+  </details>
+  <p class="status" id="stockStat">売出データ：<b>未読込</b></p>
+
+  <h2 class="sec">② 絞り込み条件</h2>
+  <label class="f">物件種別</label>
+  <select id="kind"><option>マンション</option><option>戸建て</option></select>
+
+  <label class="f">小学校区</label>
+  <select id="school"><option value="">（指定しない）</option></select>
+
+  <div class="row2">
+    <div><label class="f">町名（前方一致）</label><input type="text" id="town" placeholder="例：芝園町"></div>
+    <div><label class="f">駅名</label><input type="text" id="station" placeholder="例：富山"></div>
+  </div>
+
+  <label class="f">耐震</label>
+  <select id="taishin">
+    <option value="only">新耐震のみ（既定）</option>
+    <option value="old">旧耐震のみ</option>
+    <option value="both">こだわらない</option>
+  </select>
+
+  <div class="row2">
+    <div><label class="f" id="labAreaMin">専有面積の下限（㎡）</label><input type="number" id="areaMin" placeholder="例：70"></div>
+    <div><label class="f">上限（㎡）</label><input type="number" id="areaMax"></div>
+  </div>
+  <div class="row2">
+    <div><label class="f">土地面積の下限（㎡・戸建て）</label><input type="number" id="landMin"></div>
+    <div><label class="f">価格の上限（万円）</label><input type="number" id="priceMax" placeholder="例：3000"></div>
+  </div>
+  <div class="row2">
+    <div><label class="f">間取り</label><input type="text" id="madori" placeholder="例：3LDK|4LDK"></div>
+    <div><label class="f">築年（この年以降）</label><input type="number" id="builtAfter" placeholder="例：1990"></div>
+  </div>
+  <div class="row2">
+    <div><label class="f">駅徒歩（分以内）</label><input type="number" id="walkMax"></div>
+    <div><label class="f">所在階（以上）</label><input type="number" id="floorMin"></div>
+  </div>
+
+  <details class="box">
+    <summary>表示の設定</summary>
+    <div class="row2">
+      <div><label class="f">売出一覧の行数</label><input type="number" id="stockRows" value="6"></div>
+      <div><label class="f">成約一覧の行数</label><input type="number" id="soldRows" value="12"></div>
+    </div>
+    <div class="row2">
+      <div><label class="f">成約データの年数</label><input type="number" id="soldYears" value="5"></div>
+      <div><label class="f">価格の表示</label>
+        <select id="showPrice"><option value="1">表示する</option><option value="0">表示しない</option></select></div>
+    </div>
+    <label class="f">見出し（空欄なら自動）</label>
+    <input type="text" id="title" placeholder="例：富山市 マンション ご条件に合う物件">
+  </details>
+
+  <div class="btns">
+    <button id="btnMake">シートを作成</button>
+    <button class="gold" id="btnPrint">印刷 / PDF保存</button>
+  </div>
+  <div id="log"></div>
+
+  <h2 class="sec">③ 事前データ（最初に1回だけ）</h2>
+  <p class="hint">ブラウザに保存されます。次回からは①と②だけで使えます。</p>
+
+  <details class="box">
+    <summary>成約データ</summary>
+    <label class="f">種別</label>
+    <select id="soldKind"><option>マンション</option><option>戸建て</option></select>
+    <label class="f">REINSの成約PDF</label>
+    <input type="file" id="soldPdf" accept="application/pdf" class="file">
+    <label class="f">またはJSON（funnel_chart.py の成約データ）</label>
+    <input type="file" id="soldJson" accept=".json,application/json" class="file">
+    <label class="f">またはテキストを貼り付け</label>
+    <textarea id="soldText" placeholder="pdftotext -layout の結果"></textarea>
+    <div class="btns"><button class="sub" id="btnSoldText">テキストから登録</button></div>
+    <p class="status" id="soldStat"></p>
+  </details>
+
+  <details class="box">
+    <summary>小学校区データ</summary>
+    <label class="f">通学区域表のPDF</label>
+    <input type="file" id="kuikiPdf" accept="application/pdf" class="file">
+    <label class="f">またはJSON（school_district_toyama.json）</label>
+    <input type="file" id="kuikiJson" accept=".json,application/json" class="file">
+    <label class="f">またはテキストを貼り付け</label>
+    <textarea id="kuikiText" placeholder="通学区域表のテキスト"></textarea>
+    <div class="btns"><button class="sub" id="btnKuikiText">テキストから登録</button></div>
+    <p class="status" id="kuikiStat"></p>
+  </details>
+
+  <details class="box">
+    <summary>校区の手動登録（番地で分かれる町名など）</summary>
+    <p class="hint">町名だけで決まらない物件を、建物名・町名単位で確定させます。</p>
+    <textarea id="ovText" spellcheck="false"></textarea>
+    <div class="btns">
+      <button class="sub" id="btnOvSave">保存</button>
+      <button class="sub" id="btnOvSample">書式サンプルを入れる</button>
+    </div>
+    <p class="status" id="ovStat"></p>
+  </details>
+
+  <details class="box">
+    <summary>バックアップ・削除</summary>
+    <div class="btns">
+      <button class="sub" id="btnExport">データを書き出す</button>
+      <button class="sub" id="btnImport">書き出したデータを読み込む</button>
+      <button class="sub" id="btnClear">保存データを消す</button>
+    </div>
+    <input type="file" id="importFile" accept=".json,application/json" style="display:none">
+    <p class="hint">端末やブラウザを変えると保存データは引き継がれません。書き出しておくと安全です。</p>
+  </details>
+</div>
+
+<!-- ============ プレビュー ============ -->
+<div class="preview">
+  <div class="stagebox"><div class="sheetscale" id="scale"><div class="sheet" id="sheet"></div></div></div>
+</div>
+</div>
+
+<script>
+/* ==================================================================
+   ViVi不動産 物件希少性ファネルチャート（単一HTML版）
+   funnel_chart.py（Python版）と同じ判定ロジックをブラウザに移植したもの
+   ================================================================== */
+/* ---- LOGIC-START ---- */
+
+/* ---------- 共通ユーティリティ ---------- */
+const Z2H = s => (s || '').replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+const MADORI = '[1-9１-９]?\\s*[ＳＬＤＫRＲ]{1,4}';
+const KIND_PAT = '(?:中古|新築)(?:マンション|戸建|一戸建|住宅)';
+const clean = s => s ? s.replace(/\s+/g, ' ').trim() : null;
+const toInt = s => parseInt(String(s).replace(/,/g, ''), 10);
+
+/* ---------- REINSテキストのパーサ ---------- */
+function priceOf(seg){
+  let m = seg.match(/([\d,]+)\s*万円/);
+  if (m) return toInt(m[1]);
+  m = seg.match(/万円\s*\n\s*([\d,]+)\s/);
+  return m ? toInt(m[1]) : null;
+}
+function builtOf(seg){
+  let m = seg.match(/(19\d\d|20\d\d)\s*年?（[^）]*）\s*(\d+)\s*月/);
+  if (m) return [parseInt(m[1]), parseInt(m[2])];
+  m = seg.match(/年（[^）]*）\s*(\d+)\s*月\s*\n\s*(19\d\d|20\d\d)/);
+  if (m) return [parseInt(m[2]), parseInt(m[1])];
+  return [null, null];
+}
+const JUNK_NAMES = ['一住','二住','一中','二中','商業','近商','準工','工業','一低','二低','準住','無指定','市街化','定めなし'];
+
+function nameMadoriFloor(seg){
+  const lines = seg.split('\n');
+  let name = null, madori = null, floor = null;
+
+  // (1) 価格行に「建物名  [N階]  間取り」が並ぶ基本形
+  for (const line of lines){
+    const mm = line.match(new RegExp('^.*[\\d.]\\s*万円\\s{1,}(\\S.*?)\\s{2,}(' + MADORI + ')\\s*$'));
+    if (mm){ name = clean(mm[1]); madori = clean(mm[2]).replace(/ /g, ''); break; }
+  }
+  // (2) 間取りが取れなければ末尾から拾う
+  if (madori === null){
+    const mm = seg.match(new RegExp('(' + MADORI + ')\\s*$', 'm'));
+    if (mm) madori = clean(mm[1]).replace(/ /g, '');
+  }
+  // (3) 建物名が価格行に無い場合
+  if (name === null){
+    for (const line of lines){
+      const mm = line.match(/^.*[\d.]\s*万円\s{1,}(\S[^円]*?)\s*$/);
+      if (mm && !/(徒歩|停歩|バス|分|km)$/.test(mm[1])){ name = clean(mm[1]); break; }
+    }
+  }
+  // (4) 建物名が次行以降に折り返されている場合
+  if (name === null){
+    for (let i = 0; i < lines.length; i++){
+      const line = lines[i];
+      if (/[\d.]\s*万円/.test(line) &&
+          !(new RegExp('万円\\s{1,}\\S.*(' + MADORI + ')\\s*$')).test(line)){
+        for (const nxt of lines.slice(i + 1, i + 4)){
+          const mm = nxt.match(/^\s{6,}(\S.*?)\s*$/);
+          if (mm && !/(万円|円|徒歩|停歩|バス|分|km|年（)/.test(mm[1])){
+            let cand = mm[1];
+            const m2 = cand.match(new RegExp('\\s*([0-9０-９]{1,2})\\s*階\\s*(' + MADORI + ')?\\s*$'));
+            if (m2){
+              if (floor === null) floor = parseInt(Z2H(m2[1]));
+              cand = cand.slice(0, m2.index);
+            } else {
+              cand = cand.replace(new RegExp('\\s{2,}(' + MADORI + ')\\s*$'), '');
+            }
+            name = clean(cand) || null;
+            break;
+          }
+        }
+        break;
+      }
+    }
+  }
+  if (name){
+    // 建物名の末尾に付いた階数を分離
+    for (let k = 0; k < 3; k++){
+      const nz = Z2H(name);
+      const mm = nz.match(/\s*(\d{1,2})\s*階\s*$/);
+      if (!mm) break;
+      if (floor === null) floor = parseInt(mm[1]);
+      name = clean(name.slice(0, mm.index)) || '';
+    }
+    if (name && /階\s*$/.test(name)){
+      const head = name.replace(/\s*階\s*$/, '').trim();
+      let idx = -1;
+      if (head.slice(0, 6)) idx = lines.findIndex(l => l.includes(head.slice(0, 6)));
+      if (idx >= 0){
+        for (const nxt of lines.slice(idx + 1, idx + 5)){
+          const mm2 = nxt.match(new RegExp('^\\s*([0-9０-９]{1,2})(?:\\s+([1-9１-９]))?(?:\\s*' + MADORI + ')?\\s*$'));
+          if (mm2){
+            if (floor === null) floor = parseInt(Z2H(mm2[1]));
+            if (mm2[2] && madori && !/^[1-9１-９]/.test(madori)) madori = Z2H(mm2[2]) + madori;
+            break;
+          }
+        }
+      }
+      name = head;
+    }
+    name = name || null;
+  }
+  if (name && /^[-\s]*[\d.,]+\s*(万円|円)\s*$/.test(name)) name = null;
+  if (name && (/^[-\d.,㎡\s]*$/.test(name) || JUNK_NAMES.includes(name))) name = null;
+
+  if (floor === null){
+    const mm = seg.match(/\s([0-9０-９]{1,2})\s*階\s/);
+    if (mm) floor = parseInt(Z2H(mm[1]));
+  }
+  return [name, madori, floor];
+}
+
+function normalizeText(text){
+  return text.replace(new RegExp('^\\s*(' + KIND_PAT + ')\\s*\\n(\\s*)(\\d{9,12})(\\s|$)', 'gm'),
+                      (m, a, b, c, d) => b + c + ' ' + a + ' ');
+}
+
+function parseReins(text){
+  text = normalizeText(text);
+  const recs = [];
+  const heads = [];
+  const re = new RegExp('(\\d{9,12})\\s+(' + KIND_PAT + ')', 'g');
+  let m;
+  while ((m = re.exec(text)) !== null) heads.push([m.index, m[1], m[2]]);
+  heads.push([text.length, null, null]);
+
+  for (let i = 0; i < heads.length - 1; i++){
+    let seg = text.slice(heads[i][0], heads[i + 1][0]).split('\f')[0];
+    const kind = heads[i][2];
+    const detached = !kind.includes('マンション');
+    const r = { bukken_no: heads[i][1], kind, detached, newbuild: kind.startsWith('新築') };
+
+    let mm = seg.match(/(?:富山県)?([^\s0-9]+?[市町村])([^\s0-9]*)/);
+    r.city = mm ? mm[1] : null;
+    r.town = mm ? (mm[2] || null) : null;
+    r.price = priceOf(seg);
+    const [by, bmo] = builtOf(seg);
+    r.built_y = by; r.built_m = bmo;
+    mm = seg.match(/(令和|平成)\s*(\d+)年\s*(\d+)月\s*(\d+)日/);
+    r.deal_y = mm ? (mm[1] === '令和' ? parseInt(mm[2]) + 2018 : parseInt(mm[2]) + 1988) : null;
+    r.deal_m = mm ? parseInt(mm[3]) : null;
+
+    if (detached){
+      let land = null, bldg = null;
+      mm = seg.match(/([\d,]{1,7}\.\d{2})\s*㎡\s*\S*[都道府県]/) || seg.match(/([\d,]{1,7}\.\d{2})\s*㎡\s*\S*[市町村]/);
+      if (mm) land = parseFloat(mm[1].replace(/,/g, ''));
+      else {
+        mm = seg.match(/㎡\s+\S*[市町村][^\n]*\n\s*([\d,]{1,7}\.\d{2})/);
+        if (mm) land = parseFloat(mm[1].replace(/,/g, ''));
+      }
+      for (const line of seg.split('\n')){
+        if (/[\d,]\s*万円/.test(line)){
+          const m2 = line.match(/([\d,]{1,7}\.\d{2})\s*㎡/);
+          if (m2){ bldg = parseFloat(m2[1].replace(/,/g, '')); break; }
+        }
+      }
+      if (bldg === null){
+        const all = seg.matchAll(/(\d{1,4}\.\d{2})\s*㎡/g);
+        for (const a of all){ const v = parseFloat(a[1]); if (v !== land){ bldg = v; break; } }
+      }
+      r.land_area = land; r.bldg_area = bldg; r.area = bldg;
+    } else {
+      mm = seg.match(/(\d{1,3}\.\d{2})\s*㎡?/);
+      r.area = mm ? parseFloat(mm[1]) : null;
+      r.land_area = null; r.bldg_area = null;
+    }
+
+    const [nm, md, fl] = nameMadoriFloor(seg);
+    if (detached){ r.name = null; r.madori = md; r.floor = null; }
+    else { r.name = nm; r.madori = md; r.floor = fl; }
+
+    mm = seg.match(/(\S*線|\S*鉄道|\S*新幹線)\s+(\S+)\s+(?:徒歩|停歩)\s*(\d+)\s*分/);
+    if (mm){ r.line = mm[1]; r.station = mm[2]; r.walk = parseInt(mm[3]); }
+    else {
+      mm = seg.match(/(\S*線|\S*鉄道|\S*新幹線)\s+(\S+)\s+(?:バス|車)/);
+      r.line = mm ? mm[1] : null; r.station = mm ? mm[2] : null; r.walk = null;
+    }
+    recs.push(r);
+  }
+  return recs;
+}
+
+/* 新耐震（昭和56年6月以降） true / 旧耐震 false / 不明 null */
+function shintaishin(r){
+  if (r.newbuild) return true;
+  if (!r.built_y) return null;
+  const y = r.built_y, m = r.built_m || 1;
+  return (y > 1981) || (y === 1981 && m >= 6);
+}
+
+/* ---------- 町名の正規化と小学校区 ---------- */
+const KANJI = {'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10};
+function kanjiNum(s){
+  if (KANJI[s]) return KANJI[s];
+  const m = s.match(/^十([一二三四五六七八九])$/);
+  return m ? 10 + KANJI[m[1]] : null;
+}
+function norm(t){
+  t = (t || '').normalize('NFKC').trim().replace(/ /g, '').replace(/ケ/g, 'ヶ');
+  const pairs = [['舘','館'],['曽','曾'],['冨','富'],['嶋','島'],['渕','淵'],['沢','澤'],['タ林','夕林']];
+  for (const [a, b] of pairs) t = t.split(a).join(b);
+  let cut = false;
+  for (let n = 2; n < 7; n++){
+    if (t.length > n * 2 && t.slice(0, n) === t.slice(n, n * 2)){ t = t.slice(n); cut = true; break; }
+  }
+  if (!cut){
+    const m = t.match(/^(.{2,5})町/);
+    if (m && t.startsWith(m[1] + '町' + m[1])) t = t.slice(m[1].length + 1);
+  }
+  t = t.replace(/([一二三四五六七八九]|十[一二三四五六七八九]?)丁目/g, (mm, g) => {
+    const n = kanjiNum(g); return n ? n + '丁目' : mm;
+  });
+  return Z2H(t);
+}
+function expand(town){
+  const t = norm(town);
+  let m = t.match(/^(.+?)(\d+)丁目[~〜～\-](?:.*?)(\d+)丁目$/);
+  if (m){ const out = []; for (let i = +m[2]; i <= +m[3]; i++) out.push(m[1] + i + '丁目'); return out; }
+  m = t.match(/^(.+?)(\d+)区[~〜～\-](?:.*?)(\d+)区$/);
+  if (m){ const out = []; for (let i = +m[2]; i <= +m[3]; i++) out.push(m[1] + i + '区'); return out; }
+  return [t];
+}
+
+/* 通学区域表テキスト → 校区DB */
+function parseSchoolTable(raw){
+  const lines = [];
+  for (const ln of raw.split('\n')){
+    const s = ln.replace(/\s+$/, '');
+    if (!s.trim()) continue;
+    if (/通学区域表|改正/.test(s) || /^\s*\d\/\d\s*$/.test(s)) continue;
+    if (/^\s*小学校\s+中学校\s+町名\s*$/.test(s)) continue;
+    lines.push(s);
+  }
+  const entries = [];
+  let sho = null, chu = null, buf = [];
+  const flush = () => {
+    if (sho && chu && buf.length){
+      let joined = '';
+      for (const part of buf){
+        const p = part.trim();
+        if (!p) continue;
+        const broken = /(丁|[一二三四五六七八九十]|第|字|番|の)$/.test(joined) || /^(目|丁|番|号|区|[~〜～])/.test(p);
+        if (joined && !/[、，]$/.test(joined) && !/^[、，)）]/.test(p) && !broken) joined += '、';
+        joined += p;
+      }
+      entries.push([sho, chu, joined]);
+    }
+  };
+  for (const s of lines){
+    const m = s.match(/^(\S+?)\s{2,}(\S+?)\s{2,}(\S.*)$/);
+    const m2 = s.match(/^\s{2,}(\S+?)\s{2,}(\S.*)$/);
+    if (m && !s.startsWith(' ')){
+      flush(); buf = [];
+      sho = m[1]; chu = m[2]; buf.push(m[3]);
+    } else if (m2 && sho){
+      flush(); buf = [];
+      chu = m2[1]; buf.push(m2[2]);
+    } else buf.push(s.trim());
+  }
+  flush();
+
+  const towns = {};
+  for (const [sho_, chu_, body] of entries){
+    for (const chunk of body.replace(/[、，]/g, '\n').split('\n')){
+      const c = chunk.trim();
+      if (!c) continue;
+      let hasCond = /[(（]/.test(c);
+      let base = c.replace(/[(（][^)）]*[)）]?/g, '').trim();
+      const mBare = base.match(/^(.*?[^\d\s,~〜～])\s+[\d\s,~〜～]*\d\s*[番号](のみ|を除く)?$/);
+      if (mBare){ base = mBare[1].trim(); hasCond = true; }
+      if (/[)）]/.test(base)) base = base.split(/[)）]/).pop().trim();
+      base = base.replace(/^[\d\s,~〜～のを除るみ番号字第､、]+/, '').trim();
+      if (!base || /^[\d\s,~〜～のを除るみ番号字第]*$/.test(base)) continue;
+      for (const t of expand(base)){
+        if (!t) continue;
+        if (!towns[t]) towns[t] = { sho: [], chu: [], partial: false };
+        if (!towns[t].sho.includes(sho_)) towns[t].sho.push(sho_);
+        if (!towns[t].chu.includes(chu_)) towns[t].chu.push(chu_);
+        if (hasCond) towns[t].partial = true;
+      }
+    }
+  }
+  for (const t in towns) if (towns[t].sho.length > 1) towns[t].partial = true;
+  const shoSet = new Set();
+  for (const t in towns) towns[t].sho.forEach(s => shoSet.add(s));
+  return { city: '富山市', towns, sho_list: [...shoSet].sort() };
+}
+
+function lookupSchool(db, town){
+  const t = norm(town);
+  const towns = db.towns || {};
+  const pick = rec => (rec.sho.length === 1 && !rec.partial) ? [rec.sho[0], true] : [rec.sho, false];
+  if (towns[t]) return pick(towns[t]);
+  const t2 = t.replace(/\d+丁目$/, '');
+  if (t2 !== t && towns[t2]) return pick(towns[t2]);
+  let cands = new Set();
+  for (const k in towns) if (k.startsWith(t)) towns[k].sho.forEach(s => cands.add(s));
+  if (cands.size === 1) return [[...cands][0], true];
+  if (cands.size) return [[...cands].sort(), false];
+  const m = t.match(/^(.+?)町$/);
+  if (m){
+    cands = new Set();
+    for (const k in towns) if (k.startsWith(m[1])) towns[k].sho.forEach(s => cands.add(s));
+    if (cands.size === 1) return [[...cands][0], true];
+    if (cands.size) return [[...cands].sort(), false];
+  }
+  const keys = Object.keys(towns).sort((a, b) => b.length - a.length);
+  for (const k of keys) if (k.length >= 2 && t.startsWith(k)) return pick(towns[k]);
+  return [null, false];
+}
+
+function schoolLabel(school, confident){
+  if (confident && typeof school === 'string') return school + '小学校';
+  if (!school) return '校区は要確認';
+  const arr = typeof school === 'string' ? [school] : school;
+  const names = arr.map(s => s + '小学校');
+  if (names.length >= 3) return names.join('・') + 'のいずれか。詳しくはお調べください。';
+  return names.join('または') + '。詳しくはお調べください。';
+}
+
+function normName(s){
+  return (s || '').normalize('NFKC').trim().toUpperCase()
+    .replace(/\s+/g, '').replace(/(ワンルーム|[A-C]棟|棟)$/, '');
+}
+
+function annotateSchool(recs, db, ov){
+  if (db && db.towns){
+    for (const r of recs){
+      const [s, c] = lookupSchool(db, r.town || '');
+      r.school = c ? s : (s || null);
+      r.school_confident = c;
+      r.school_label = schoolLabel(r.school, c);
+    }
+  }
+  if (!ov) return recs;
+  const mans = ov.mansions || [], kod = ov.kodate_towns || [], notes = ov.notes || [];
+  const noteIdx = {}; notes.forEach(n => noteIdx[n.town] = n);
+  const townIdx = {}; kod.forEach(t => townIdx[t.town] = t);
+  for (const r of recs){
+    if (r.school_confident) continue;
+    let m = mans.find(x => x.town === r.town && normName(x.name) === normName(r.name));
+    if (!m && r.name) m = mans.find(x => normName(x.name) === normName(r.name));
+    if (!m && r.name){
+      let frag = r.name;
+      for (const pre of ['富山市', r.town || '', (r.town || '').replace(/\d+丁目$/, '')]){
+        if (pre) frag = frag.split(pre).join('');
+      }
+      frag = normName(frag.replace(/^[\s\d\-－丁目]+/, ''));
+      if (frag.length >= 4){
+        const cands = mans.filter(x => x.town === r.town && normName(x.name).startsWith(frag));
+        if (cands.length && new Set(cands.map(c => c.sho)).size === 1) m = cands[0];
+      }
+    }
+    if (!m) m = townIdx[r.town];
+    const note = noteIdx[r.town];
+    if (note){
+      r.school = note.candidates || null;
+      r.school_confident = false;
+      r.school_label = schoolLabel(r.school, false);
+      continue;
+    }
+    if (m){
+      r.school = m.sho; r.school_confident = true; r.school_label = schoolLabel(m.sho, true);
+    }
+  }
+  return recs;
+}
+
+/* ---------- 絞り込み ---------- */
+function buildSteps(c){
+  const steps = [];
+  if (c.school) steps.push([c.school + '小学校区', r => r.school === c.school && r.school_confident]);
+  if (c.town) steps.push([c.town, r => (r.town || '').startsWith(c.town)]);
+  if (c.station) steps.push([c.station + '駅', r => (r.station || '') === c.station]);
+  if (c.taishin === 'only') steps.push(['新耐震', r => shintaishin(r) === true]);
+  else if (c.taishin === 'old') steps.push(['旧耐震', r => shintaishin(r) === false]);
+  if (c.areaMin || c.areaMax){
+    const key = c.kind === '戸建て' ? 'bldg_area' : 'area';
+    const head = (c.kind === '戸建て' ? '建物' : '専有') + '面積 ';
+    const lab = head + (c.areaMin && !c.areaMax ? c.areaMin + '㎡以上'
+      : (c.areaMax && !c.areaMin ? c.areaMax + '㎡以下' : c.areaMin + '〜' + c.areaMax + '㎡'));
+    steps.push([lab, r => r[key] != null &&
+      (!c.areaMin || r[key] >= c.areaMin) && (!c.areaMax || r[key] <= c.areaMax)]);
+  }
+  if (c.landMin) steps.push(['土地 ' + c.landMin + '㎡以上', r => r.land_area != null && r.land_area >= c.landMin]);
+  if (c.madori){
+    let re = null;
+    try { re = new RegExp(c.madori); } catch (e) { re = null; }
+    if (re) steps.push([c.madori.replace(/\|/g, '・'), r => re.test((r.madori || '').normalize('NFKC'))]);
+  }
+  if (c.priceMax) steps.push([Number(c.priceMax).toLocaleString('ja-JP') + '万円以下',
+                              r => r.price != null && r.price <= c.priceMax]);
+  if (c.builtAfter) steps.push([c.builtAfter + '年以降築', r => r.built_y != null && r.built_y >= c.builtAfter]);
+  if (c.walkMax) steps.push(['駅徒歩' + c.walkMax + '分以内', r => r.walk != null && r.walk <= c.walkMax]);
+  if (c.floorMin) steps.push([c.floorMin + '階以上', r => r.floor != null && r.floor >= c.floorMin]);
+  return steps;
+}
+
+/* 0件になる段は使わず、その手前で打ち止める（商談が止まらないように） */
+function buildStages(recs, steps){
+  const stages = [['全体', recs.length]];
+  let cur = recs; const applied = []; let dropped = null;
+  for (const [label, fn] of steps){
+    const nxt = cur.filter(fn);
+    if (!nxt.length){ dropped = label; break; }
+    cur = nxt; applied.push([label, fn]); stages.push([label, cur.length]);
+  }
+  return { stages, final: cur, applied, dropped };
+}
+
+/* ---- LOGIC-END ---- */
+
+/* ==================================================================
+   ここから画面（保存・描画・印刷）
+   ================================================================== */
+const K = { sold_m:'vivi_funnel_sold_mansion', sold_k:'vivi_funnel_sold_kodate',
+            school:'vivi_funnel_school', ov:'vivi_funnel_override' };
+const $ = id => document.getElementById(id);
+const PAL = ['#1f4e79','#28598a','#31699b','#3d78ab','#4c8abf','#5b9bd5','#7fb1de'];
+let STOCK = [];
+
+function store(key, obj){
+  try { localStorage.setItem(key, JSON.stringify(obj)); return true; }
+  catch (e) { log('保存に失敗しました（データが大きすぎる可能性があります）'); return false; }
+}
+function load(key){
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }
+  catch (e) { return null; }
+}
+function log(msg){
+  const el = $('log');
+  el.textContent = (msg + '\n' + el.textContent).slice(0, 3000);
+}
+
+/* ---------- PDF → レイアウト保持テキスト ---------- */
+let pdfLibP = null;
+const PDF_CDN = [
+  ['https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'],
+  ['https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
+   'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js'],
+  ['https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js',
+   'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js']
+];
+function loadScript(src){
+  return new Promise((res, rej) => {
+    const el = document.createElement('script');
+    el.src = src; el.onload = res; el.onerror = () => rej(new Error(src));
+    document.head.appendChild(el);
+  });
+}
+function loadPdfLib(){
+  if (pdfLibP) return pdfLibP;
+  pdfLibP = (async () => {
+    for (const [lib, worker] of PDF_CDN){
+      try {
+        await loadScript(lib);
+        if (window.pdfjsLib){
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = worker;
+          return window.pdfjsLib;
+        }
+      } catch (e) { /* 次の配信元を試す */ }
+    }
+    pdfLibP = null;
+    throw new Error('PDF読み取り部品を取得できませんでした。ネットワークに接続しているかご確認いただくか、テキスト貼り付けをお使いください。');
+  })();
+  return pdfLibP;
+}
+async function pdfToText(file){
+  const lib = await loadPdfLib();
+  const pdf = await lib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const out = [];
+  for (let p = 1; p <= pdf.numPages; p++){
+    const page = await pdf.getPage(p);
+    const items = (await page.getTextContent()).items.filter(i => i.str && i.str.trim() !== '');
+    const ws = items.map(i => i.width / Math.max(i.str.length, 1)).filter(w => w > 0).sort((a, b) => a - b);
+    const unit = ws.length ? ws[Math.floor(ws.length / 2)] : 5;
+    const rows = [];
+    for (const it of items){
+      const x = it.transform[4], y = it.transform[5];
+      let row = rows.find(r => Math.abs(r.y - y) < 3);
+      if (!row){ row = { y, cells: [] }; rows.push(row); }
+      row.cells.push({ x, s: it.str });
+    }
+    rows.sort((a, b) => b.y - a.y);
+    for (const row of rows){
+      row.cells.sort((a, b) => a.x - b.x);
+      let line = '';
+      for (const c of row.cells){
+        const col = Math.round(c.x / unit);
+        if (col > line.length) line += ' '.repeat(col - line.length);
+        line += c.s;
+      }
+      out.push(line.replace(/\s+$/, ''));
+    }
+    out.push('\f');
+  }
+  return out.join('\n');
+}
+
+/* ---------- 保存データの状態表示 ---------- */
+function refreshStatus(){
+  const sm = load(K.sold_m), sk = load(K.sold_k), sc = load(K.school), ov = load(K.ov);
+  $('soldStat').innerHTML =
+    'マンション：<b>' + (sm ? sm.recs.length + '件（' + sm.saved + '）' : '未登録') + '</b><br>' +
+    '戸建て：<b>' + (sk ? sk.recs.length + '件（' + sk.saved + '）' : '未登録') + '</b>';
+  $('kuikiStat').innerHTML = sc
+    ? '登録済み：<b>小学校区' + sc.sho_list.length + '／町名' + Object.keys(sc.towns).length + '</b>'
+    : '<span class="ng">未登録</span>（小学校区での絞り込みには必要です）';
+  $('ovStat').textContent = ov
+    ? '登録済み：建物' + (ov.mansions || []).length + '件／町名' + (ov.kodate_towns || []).length + '件'
+    : '未登録';
+  const sel = $('school'), cur = sel.value;
+  sel.innerHTML = '<option value="">（指定しない）</option>' +
+    (sc ? sc.sho_list.map(s => '<option>' + s + '</option>').join('') : '');
+  sel.value = cur;
+}
+
+/* ---------- 条件の読み取り ---------- */
+function readCond(){
+  const n = id => { const v = parseFloat($(id).value); return isNaN(v) ? null : v; };
+  return {
+    kind: $('kind').value, school: $('school').value || null,
+    town: $('town').value.trim() || null, station: $('station').value.trim() || null,
+    taishin: $('taishin').value,
+    areaMin: n('areaMin'), areaMax: n('areaMax'), landMin: n('landMin'),
+    madori: $('madori').value.trim() || null, priceMax: n('priceMax'),
+    builtAfter: n('builtAfter'), walkMax: n('walkMax'), floorMin: n('floorMin'),
+    stockRows: n('stockRows') || 6, soldRows: n('soldRows') || 12,
+    soldYears: n('soldYears') || 5, showPrice: $('showPrice').value === '1',
+    title: $('title').value.trim() || null
+  };
+}
+
+/* ---------- シート描画 ---------- */
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const han = s => (s || '-').normalize('NFKC');
+const areaTxt = v => v != null ? Number(v).toFixed(2) : '-';
+const yenTxt = v => v != null ? Number(v).toLocaleString('ja-JP') : '-';
+
+function funnelHtml(stages){
+  const mx = Math.max(...stages.map(s => s[1])) || 1;
+  const base = stages[0][1] || 1;
+  const w = stages.map(s => 24 + 39 * Math.pow(s[1] / mx, 0.45));
+  w.push(21);
+  let h = '<div class="funnel">';
+  stages.forEach((st, i) => {
+    const last = i === stages.length - 1;
+    const t = w[i], b = w[i + 1];
+    const poly = `polygon(${(50 - t / 2).toFixed(1)}% 0%, ${(50 + t / 2).toFixed(1)}% 0%, ` +
+                 `${(50 + b / 2).toFixed(1)}% 100%, ${(50 - b / 2).toFixed(1)}% 100%)`;
+    const pct = i === 0 ? '100%' : (st[1] / base * 100).toFixed(1) + '%';
+    h += '<div class="fstage" style="flex:1">' +
+         '<div class="fbar' + (last ? ' last' : '') + '">' +
+         '<div class="bg" style="background:' + PAL[i % PAL.length] + ';clip-path:' + poly + '"></div>' +
+         '<div class="lab">' + st[0] + '</div>' +
+         '<div class="val">' + st[1] + ' 件</div>' +
+         (last ? '<svg class="arrow" width="34" height="16" viewBox="0 0 34 16">' +
+                 '<path d="M33 8 L10 8 M17 2 L10 8 L17 14" stroke="#bf9000" stroke-width="2.4" fill="none"/></svg>' : '') +
+         '</div><div class="fpct">' + pct + '</div></div>';
+  });
+  return h + '</div>';
+}
+
+function tableHtml(recs, opt){
+  const d = opt.detached, price = opt.showPrice, sold = opt.sold;
+  const cols = [];
+  if (sold) cols.push(['成約年月', 62]);
+  cols.push([d ? '所在地' : 'マンション名', 0]);
+  if (d){ cols.push(['土地(㎡)', 74], ['建物(㎡)', 74]); }
+  else { cols.push(['所在階', 56], ['面積(㎡)', 74]); }
+  cols.push(['間取り', 62], ['築年', 60]);
+  if (price) cols.push([sold ? '成約価格(万円)' : '価格(万円)', sold ? 104 : 90]);
+  if (!sold) cols.push(['最寄駅', 108]);
+
+  let h = '<table class="d"><colgroup>' +
+    cols.map(c => '<col' + (c[1] ? ' style="width:' + c[1] + 'px"' : '') + '>').join('') +
+    '</colgroup><tr>' + cols.map(c => '<th>' + c[0] + '</th>').join('') + '</tr>';
+  if (!recs.length){
+    h += '<tr><td class="empty" colspan="' + cols.length + '">' + esc(opt.empty || '該当なし') + '</td></tr>';
+    return h + '</table>';
+  }
+  for (const r of recs){
+    h += '<tr>';
+    if (sold) h += '<td>' + (r.deal_y && r.deal_m ? r.deal_y + '/' + String(r.deal_m).padStart(2, '0') : '-') + '</td>';
+    h += '<td class="name">' + esc(d ? (r.town || '-') : (r.name || '（記載なし）')) + '</td>';
+    if (d) h += '<td class="num">' + areaTxt(r.land_area) + '</td><td class="num">' + areaTxt(r.bldg_area) + '</td>';
+    else h += '<td>' + (r.floor ? r.floor + '階' : '-') + '</td><td class="num">' + areaTxt(r.area) + '</td>';
+    h += '<td>' + esc(han(r.madori)) + '</td>';
+    h += '<td>' + (r.built_y ? r.built_y + '年' : '-') + '</td>';
+    if (price) h += '<td class="num">' + yenTxt(r.price) + '</td>';
+    if (!sold) h += '<td>' + esc(r.station ? r.station + ' 徒歩' + r.walk + '分' : '-') + '</td>';
+    h += '</tr>';
+  }
+  return h + '</table>';
+}
+
+function render(res, c, soldAll){
+  const d = c.kind === '戸建て';
+  const city = (STOCK.find(r => r.city) || {}).city || '対象市区町村';
+  const stockView = res.final.slice(0, Math.max(1, c.stockRows));
+  const stockRest = res.final.length - stockView.length;
+  const sold = res.sold;
+  const ordered = sold.slice().sort((a, b) => (b.deal_y || 0) - (a.deal_y || 0) || (b.deal_m || 0) - (a.deal_m || 0));
+  const shown = ordered.slice(0, Math.max(1, c.soldRows));
+  const rest = sold.length - shown.length;
+  const per = sold.length / c.soldYears;
+
+  const stages = res.stages.map(s => [esc(s[0]), s[1]]);
+  stages[0] = [esc(city + ' ' + c.kind + '売出'), STOCK.length];
+  if (stages.length > 1) stages[stages.length - 1][0] += '<br>＝ ご条件に合致';
+
+  let band = '<div class="b1">ご条件に合う現在の売出物件は、この<span class="big">' + res.final.length + '件</span>がすべてです。</div>';
+  if (sold.length){
+    band += '<p>過去' + c.soldYears + '年間の同条件の成約は<span class="em">' + sold.length +
+            '件</span>、年平均<span class="em">' + per.toFixed(1) + '件</span>のペースです。</p>';
+    if (per > 0 && per < 12)
+      band += '<p>およそ<span class="em">' + Math.round(12 / per) + 'か月に1件</span>の頻度になります。</p>';
+  } else {
+    band += '<p>過去' + c.soldYears + '年間で、同じご条件の成約は記録上ありません。</p>';
+  }
+  if (res.dropped)
+    band += '<p class="warn">※「' + esc(res.dropped) + '」の条件では0件になるため、その手前までの条件で集計しています。</p>';
+
+  const head1 = stockRest > 0
+    ? '■ ご条件に合う現在の売出物件（全' + res.final.length + '件／' + stockView.length + '件を表示）'
+    : '■ ご条件に合う現在の売出物件（' + res.final.length + '件すべて）';
+
+  $('sheet').innerHTML =
+    '<div class="title">' + esc(c.title || (city + ' ' + c.kind + ' ご条件に合う物件')) + '</div>' +
+    '<div class="subtitle">出典: REINS 売出' + STOCK.length + '件／成約' + soldAll.length + '件</div>' +
+    '<div class="hr"></div>' +
+    '<div class="main"><div class="left">' + funnelHtml(stages) + '</div>' +
+    '<div class="right">' +
+      '<h3>' + head1 + '</h3>' +
+      tableHtml(stockView, { detached: d, showPrice: c.showPrice, sold: false, empty: 'ご条件に合う売出はありません' }) +
+      (stockRest > 0 ? '<div class="note">※ このほかに同条件の売出が ' + stockRest + ' 件あります。</div>' : '<div style="height:12px"></div>') +
+      '<h3>■ 同条件の過去' + c.soldYears + '年間の成約実績（全' + sold.length + '件／直近' + shown.length + '件を表示）</h3>' +
+      tableHtml(shown, { detached: d, showPrice: c.showPrice, sold: true,
+                         empty: '過去' + c.soldYears + '年間で同条件の成約はありません' }) +
+      (rest > 0 ? '<div class="note">※ このほかに同条件の成約が ' + rest + ' 件あり、合計 ' + sold.length + ' 件です。</div>' : '') +
+    '</div></div>' +
+    '<div class="band">' + band + '</div>' +
+    '<div class="foot">' +
+      (c.school ? '<span class="school">※ 校区は町名からの判定です。番地により異なる場合がありますので、「詳しくはお調べください」と記載のある物件は市の通学区域表でご確認ください。</span>' : '') +
+      '出典: REINS 売買物件検索結果（在庫／成約）記載の明細のみを集計しています。「-」は記載がない項目です。' +
+    '</div>';
+  fitSheet();
+}
+
+/* 用紙からはみ出さない行数まで自動で減らす */
+function renderFit(res, c, soldAll){
+  let soldRows = c.soldRows, stockRows = c.stockRows;
+  for (let i = 0; i < 40; i++){
+    render(res, Object.assign({}, c, { soldRows, stockRows }), soldAll);
+    const m = document.querySelector('#sheet .main');
+    const r = document.querySelector('#sheet .right');
+    let need = 0;                         // 中身（見出し・表・注記）の実際の高さ
+    Array.prototype.forEach.call(r.children, el => {
+      const st = getComputedStyle(el);
+      need += el.offsetHeight + parseFloat(st.marginTop || 0) + parseFloat(st.marginBottom || 0);
+    });
+    const over = need - (m.clientHeight - 10);   // -10 は印刷時の差を吸収する余白
+    if (over <= 0) break;
+    if (soldRows > 1) soldRows -= 1;
+    else if (stockRows > 1) stockRows -= 1;
+    else break;
+  }
+}
+
+function fitSheet(){
+  const box = document.querySelector('.preview');
+  if (!box) return;
+  const w = box.clientWidth, sheetW = 297 / 25.4 * 96;
+  const s = Math.min(1, w / sheetW);
+  $('scale').style.transform = 'scale(' + s + ')';
+  document.querySelector('.stagebox').style.height = (210 / 25.4 * 96 * s) + 'px';
+}
+window.addEventListener('resize', fitSheet);
+
+/* ---------- 生成 ---------- */
+function makeSheet(){
+  const c = readCond();
+  if (!STOCK.length){ alert('先に売出データを読み込んでください。'); return; }
+  const soldStore = load(c.kind === 'マンション' ? K.sold_m : K.sold_k);
+  const soldAll = soldStore ? soldStore.recs : [];
+  if (!soldAll.length) log('※ 成約データが未登録です。成約実績は空欄になります。');
+
+  const db = load(K.school), ov = load(K.ov);
+  annotateSchool(STOCK, db, ov);
+  const soldCopy = soldAll.map(r => Object.assign({}, r));
+  annotateSchool(soldCopy, db, ov);
+  if (c.school && !db){ alert('小学校区で絞り込むには、③で校区データを登録してください。'); return; }
+
+  const steps = buildSteps(c);
+  const res = buildStages(STOCK, steps);
+  res.sold = res.applied.reduce((arr, [, fn]) => arr.filter(fn), soldCopy);
+  renderFit(res, c, soldAll);
+
+  log('作成: ' + res.stages.map(s => s[0] + ' ' + s[1] + '件').join(' → ') +
+      (res.dropped ? '（「' + res.dropped + '」は0件のため不適用）' : ''));
+}
+
+/* ---------- 画面イベント ---------- */
+function setStock(recs, src){
+  STOCK = recs;
+  $('stockStat').innerHTML = '売出データ：<b>' + recs.length + '件</b>（' + src + '）';
+  log('売出データ ' + recs.length + '件を読み込みました');
+  if (!recs.length) alert('明細を読み取れませんでした。REINSの検索結果PDF（明細形式）かご確認ください。');
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  refreshStatus(); fitSheet();
+
+  $('kind').addEventListener('change', () => {
+    $('labAreaMin').textContent = ($('kind').value === '戸建て' ? '建物' : '専有') + '面積の下限（㎡）';
+  });
+
+  $('stockPdf').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      if (/\.json$/i.test(f.name)){
+        const d = JSON.parse(await f.text());
+        setStock(Array.isArray(d) ? d : (d.recs || []), f.name);
+      } else {
+        log('PDFを読み取り中…');
+        setStock(parseReins(await pdfToText(f)), f.name);
+      }
+    } catch (err){ alert(err.message); log('エラー: ' + err.message); }
+  });
+  $('btnStockText').addEventListener('click', () => {
+    const t = $('stockText').value;
+    if (!t.trim()){ alert('テキストを貼り付けてください。'); return; }
+    setStock(parseReins(t), '貼り付け');
+  });
+
+  $('soldPdf').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    log('成約PDFを読み取り中…');
+    try { saveSold(parseReins(await pdfToText(f))); }
+    catch (err){ alert(err.message); }
+  });
+  $('soldJson').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const d = JSON.parse(await f.text());
+      saveSold(Array.isArray(d) ? d : (d.recs || []));
+    } catch (err){ alert('JSONを読めませんでした。'); }
+  });
+  $('btnSoldText').addEventListener('click', () => {
+    const t = $('soldText').value;
+    if (!t.trim()){ alert('テキストを貼り付けてください。'); return; }
+    saveSold(parseReins(t));
+  });
+  function saveSold(recs){
+    if (!recs.length){ alert('明細を読み取れませんでした。'); return; }
+    const key = $('soldKind').value === 'マンション' ? K.sold_m : K.sold_k;
+    if (store(key, { recs, saved: new Date().toLocaleDateString('ja-JP') })){
+      refreshStatus(); log('成約データ ' + recs.length + '件を保存しました');
+    }
+  }
+
+  $('kuikiPdf').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { saveSchool(parseSchoolTable(await pdfToText(f))); }
+    catch (err){ alert(err.message); }
+  });
+  $('kuikiJson').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { saveSchool(JSON.parse(await f.text())); }
+    catch (err){ alert('JSONを読めませんでした。'); }
+  });
+  $('btnKuikiText').addEventListener('click', () => {
+    const t = $('kuikiText').value;
+    if (!t.trim()){ alert('テキストを貼り付けてください。'); return; }
+    saveSchool(parseSchoolTable(t));
+  });
+  function saveSchool(db){
+    if (!db || !db.towns || !Object.keys(db.towns).length){ alert('校区を読み取れませんでした。'); return; }
+    db.sho_list = db.sho_list || [...new Set(Object.values(db.towns).flatMap(t => t.sho))].sort();
+    if (store(K.school, db)){ refreshStatus(); log('校区データを保存しました（町名' + Object.keys(db.towns).length + '）'); }
+  }
+
+  const OV_SAMPLE = {
+    mansions: [{ town: '〇〇町1丁目', name: '〇〇マンション', sho: '芝園', chu: '芝園', source: '市教委に確認 2026-04' }],
+    kodate_towns: [{ town: '〇〇町', sho: '五福', chu: '西部', source: '通学区域表' }],
+    notes: [{ town: '東田地方町1丁目', status: '番地により校区が分かれる', candidates: ['芝園', '五福'] }]
+  };
+  $('ovText').value = JSON.stringify(load(K.ov) || { mansions: [], kodate_towns: [], notes: [] }, null, 1);
+  $('btnOvSample').addEventListener('click', () => { $('ovText').value = JSON.stringify(OV_SAMPLE, null, 1); });
+  $('btnOvSave').addEventListener('click', () => {
+    try {
+      const d = JSON.parse($('ovText').value);
+      if (store(K.ov, d)){ refreshStatus(); log('手動登録を保存しました'); }
+    } catch (e){ alert('JSONの書式が正しくありません。'); }
+  });
+
+  $('btnExport').addEventListener('click', () => {
+    const all = { sold_mansion: load(K.sold_m), sold_kodate: load(K.sold_k),
+                  school: load(K.school), override: load(K.ov), exported: new Date().toISOString() };
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(all)], { type: 'application/json' }));
+    a.download = 'funnel-data-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.click();
+  });
+  $('btnImport').addEventListener('click', () => $('importFile').click());
+  $('importFile').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const d = JSON.parse(await f.text());
+      if (d.sold_mansion) store(K.sold_m, d.sold_mansion);
+      if (d.sold_kodate) store(K.sold_k, d.sold_kodate);
+      if (d.school) store(K.school, d.school);
+      if (d.override) store(K.ov, d.override);
+      refreshStatus(); log('データを読み込みました');
+    } catch (err){ alert('読み込めませんでした。'); }
+  });
+  $('btnClear').addEventListener('click', () => {
+    if (!confirm('保存した成約・校区・手動登録データを消します。よろしいですか？')) return;
+    Object.values(K).forEach(k => localStorage.removeItem(k));
+    refreshStatus(); log('保存データを消しました');
+  });
+
+  $('btnMake').addEventListener('click', makeSheet);
+  $('btnPrint').addEventListener('click', () => window.print());
+});
+</script>
+</body>
+</html>
