@@ -57,6 +57,11 @@ details.box{border:1px solid #d3dbe3; border-radius:8px; padding:10px 12px; marg
 details.box>summary{cursor:pointer; font-weight:700; color:var(--navy); font-size:16px}
 .hint{font-size:13px; color:var(--muted); margin:6px 0 0}
 .file{font-size:14px}
+.flash{font-size:17px; font-weight:700; padding:11px 13px; border-radius:8px; margin-top:10px;
+       background:#e8f5e9; border:2px solid #2e7d32; color:#1b5e20; line-height:1.5}
+.flash.busy{background:#fff8e1; border-color:var(--gold); color:var(--gold-txt)}
+.flash.err{background:#fdecea; border-color:#c62828; color:#b71c1c}
+.flash .big{font-size:22px}
 #log{white-space:pre-wrap; font-size:13px; color:#444; background:#f6f8fa; border-radius:6px;
      padding:8px 10px; margin-top:10px; max-height:150px; overflow:auto}
 
@@ -163,7 +168,8 @@ table.d .empty{color:#888; font-size:14px; padding:14px}
 
   <h2 class="sec">① 売出データ（今回の商談分）</h2>
   <label class="f">REINSの売出PDF</label>
-  <input type="file" id="stockPdf" accept="application/pdf,.json" class="file">
+  <input type="file" id="stockPdf" accept="application/pdf,.json" class="file" multiple>
+  <p class="hint">複数のPDFをまとめて選べます（Ctrlキーを押しながらクリック）。</p>
   <label class="f">読み込み方</label>
   <select id="stockMode">
     <option value="replace">入れ替える（新しく検索した分だけ）</option>
@@ -176,6 +182,7 @@ table.d .empty{color:#888; font-size:14px; padding:14px}
     <textarea id="stockText" placeholder="ここにREINSの検索結果テキストを貼り付け"></textarea>
     <div class="btns"><button class="sub" id="btnStockText">貼り付けたテキストを読み込む</button></div>
   </details>
+  <div class="flash" id="stockFlash" style="display:none"></div>
   <p class="status" id="stockStat">売出データ：<b>未読込</b></p>
 
   <h2 class="sec">② 絞り込み条件</h2>
@@ -251,12 +258,13 @@ table.d .empty{color:#888; font-size:14px; padding:14px}
     </div>
     <p class="hint">同じ物件番号は自動で除きます。分割されたPDFや、毎年の追加分はそのまま足していけます。</p>
     <label class="f">REINSの成約PDF</label>
-    <input type="file" id="soldPdf" accept="application/pdf" class="file">
+    <input type="file" id="soldPdf" accept="application/pdf" class="file" multiple>
     <label class="f">またはJSON（funnel_chart.py の成約データ）</label>
-    <input type="file" id="soldJson" accept=".json,application/json" class="file">
+    <input type="file" id="soldJson" accept=".json,application/json" class="file" multiple>
     <label class="f">またはテキストを貼り付け</label>
     <textarea id="soldText" placeholder="pdftotext -layout の結果"></textarea>
     <div class="btns"><button class="sub" id="btnSoldText">テキストから登録</button></div>
+    <div class="flash" id="soldFlash" style="display:none"></div>
     <p class="status" id="soldStat"></p>
   </details>
 
@@ -269,6 +277,7 @@ table.d .empty{color:#888; font-size:14px; padding:14px}
     <label class="f">またはテキストを貼り付け</label>
     <textarea id="kuikiText" placeholder="通学区域表のテキスト"></textarea>
     <div class="btns"><button class="sub" id="btnKuikiText">テキストから登録</button></div>
+    <div class="flash" id="kuikiFlash" style="display:none"></div>
     <p class="status" id="kuikiStat"></p>
   </details>
 
@@ -288,6 +297,7 @@ table.d .empty{color:#888; font-size:14px; padding:14px}
     <p class="hint">成約データと小学校区データは、このページに置いた共有ファイルから自動で読み込まれます。誰かが更新すれば、次に開いた全員に反映されます。</p>
     <p class="status" id="sharedStat"></p>
     <div class="btns"><button class="sub" id="btnShared">共有データを読み込み直す</button></div>
+    <div class="flash" id="sharedFlash" style="display:none"></div>
   </details>
 
   <details class="box">
@@ -298,7 +308,9 @@ table.d .empty{color:#888; font-size:14px; padding:14px}
       <button class="sub" id="btnClear">保存データを消す</button>
     </div>
     <input type="file" id="importFile" accept=".json,application/json" style="display:none">
-    <p class="hint">端末やブラウザを変えると保存データは引き継がれません。書き出しておくと安全です。</p>
+    <div class="flash" id="importFlash" style="display:none"></div>
+    <p class="hint">保存データは端末ごとです。「共有データ」は、このページと同じ場所に置いた
+    <code>data/funnel-data.json</code> を読み込む機能で、全員が同じ成約・校区データで使えます。</p>
   </details>
 </div>
 
@@ -954,6 +966,40 @@ function load(key){
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }
   catch (e) { return null; }
 }
+/* 読み込み結果を大きく表示する */
+function flash(id, msg, kind){
+  const el = $(id);
+  if (!el) return;
+  el.className = 'flash' + (kind ? ' ' + kind : '');
+  el.innerHTML = msg;
+  el.style.display = 'block';
+}
+
+/* PDF / テキスト / JSON をまとめて読み取り、明細の配列にする */
+async function readAnyFiles(files, onStep){
+  const out = [];
+  const seen = {};
+  for (let i = 0; i < files.length; i++){
+    const f = files[i];
+    if (onStep) onStep(i + 1, files.length, f.name);
+    let recs = [];
+    if (/\.json$/i.test(f.name)){
+      const d = JSON.parse(await f.text());
+      recs = Array.isArray(d) ? d : (d.recs || []);
+    } else if (/\.pdf$/i.test(f.name)){
+      recs = parseReins(await pdfToText(f));
+    } else {
+      recs = parseReins(await f.text());
+    }
+    for (const r of recs){                 // 選んだファイル同士の重複も除く
+      if (r.bukken_no && seen[r.bukken_no]) continue;
+      if (r.bukken_no) seen[r.bukken_no] = 1;
+      out.push(r);
+    }
+  }
+  return out;
+}
+
 function log(msg){
   const el = $('log');
   el.textContent = (msg + '\n' + el.textContent).slice(0, 3000);
@@ -1040,6 +1086,17 @@ function yearSpan(recs){
   return { from, to, years: to - from + 1 };
 }
 
+/* バックアップ／共有データを保存領域に反映する */
+function applyBundle(d){
+  let n = 0;
+  if (d.sold_mansion){ store(K.sold_m, d.sold_mansion); n++; }
+  if (d.sold_kodate){ store(K.sold_k, d.sold_kodate); n++; }
+  if (d.school){ store(K.school, d.school); n++; }
+  if (d.override){ store(K.ov, d.override); n++; }
+  return n;
+}
+
+
 /* 全員で使う共有データを読み込む（同じ版なら何もしない） */
 async function loadShared(force){
   try {
@@ -1048,12 +1105,13 @@ async function loadShared(force){
     const d = await res.json();
     const ver = String(d.version || d.exported || '');
     if (!force && localStorage.getItem(K.sv) === ver && load(K.school)) return false;
-    if (d.sold_mansion) store(K.sold_m, d.sold_mansion);
-    if (d.sold_kodate) store(K.sold_k, d.sold_kodate);
-    if (d.school) store(K.school, d.school);
-    if (d.override) store(K.ov, d.override);
+    applyBundle(d);
     localStorage.setItem(K.sv, ver);
     refreshStatus();
+    const m = load(K.sold_m), k = load(K.sold_k), sc = load(K.school);
+    flash('sharedFlash', '✓ 共有データを読み込みました' + (ver ? '（' + esc(ver.slice(0, 10)) + '版）' : '') +
+          '<br>マンション ' + (m ? m.recs.length : 0) + '件 ／ 戸建て ' + (k ? k.recs.length : 0) +
+          '件 ／ 小学校区 ' + (sc ? sc.sho_list.length : 0));
     log('共有データを読み込みました（' + (ver || '版の記載なし') + '）');
     return true;
   } catch (e) {
@@ -1367,9 +1425,10 @@ function showRelax(res, steps, c){
 }
 
 /* ---------- 画面イベント ---------- */
-function setStock(recs, src){
+function setStock(recs, src, nfiles){
   if (!recs.length){
-    alert('明細を読み取れませんでした。REINSの検索結果PDF（明細が一覧で並ぶ形式）かご確認ください。');
+    flash('stockFlash', '明細を読み取れませんでした。REINSの検索結果PDF（明細が一覧で並ぶ形式）か' +
+          'ご確認ください。読めない場合は「テキストを貼り付け」をお使いください。', 'err');
     return;
   }
   const mode = ($('stockMode') || {}).value || 'replace';
@@ -1384,6 +1443,11 @@ function setStock(recs, src){
     STOCK = recs;
   }
   $('stockStat').innerHTML = '売出データ：<b>' + STOCK.length + '件</b>（' + src + '）';
+  flash('stockFlash',
+        '✓ 読み込み成功 &nbsp;<span class="big">' + STOCK.length + '件</span>' +
+        (nfiles > 1 ? '（' + nfiles + 'ファイル）' : '') +
+        '<br>新規 ' + add + '件' + (dup ? ' ／ 重複 ' + dup + '件は除外' : '') +
+        (mode === 'add' ? ' ／ 追加読み込み' : ''));
   log('売出データを読み込みました：新規' + add + '件' + (dup ? '／重複' + dup + '件は除外' : '') +
       '／合計' + STOCK.length + '件');
 }
@@ -1397,43 +1461,46 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   $('stockPdf').addEventListener('change', async e => {
-    const f = e.target.files[0]; if (!f) return;
+    const files = Array.prototype.slice.call(e.target.files);
+    if (!files.length) return;
     try {
-      if (/\.json$/i.test(f.name)){
-        const d = JSON.parse(await f.text());
-        setStock(Array.isArray(d) ? d : (d.recs || []), f.name);
-      } else {
-        log('PDFを読み取り中…');
-        setStock(parseReins(await pdfToText(f)), f.name);
-      }
-    } catch (err){ alert(err.message); log('エラー: ' + err.message); }
+      const recs = await readAnyFiles(files, (i, n, name) =>
+        flash('stockFlash', '読み取り中… (' + i + '/' + n + ') ' + esc(name), 'busy'));
+      setStock(recs, files.length + 'ファイル', files.length);
+    } catch (err){
+      flash('stockFlash', '読み取れませんでした：' + esc(err.message), 'err');
+    }
   });
   $('btnStockText').addEventListener('click', () => {
     const t = $('stockText').value;
     if (!t.trim()){ alert('テキストを貼り付けてください。'); return; }
-    setStock(parseReins(t), '貼り付け');
+    setStock(parseReins(t), '貼り付け', 1);
   });
 
-  $('soldPdf').addEventListener('change', async e => {
-    const f = e.target.files[0]; if (!f) return;
-    log('成約PDFを読み取り中…');
-    try { saveSold(parseReins(await pdfToText(f))); }
-    catch (err){ alert(err.message); }
-  });
-  $('soldJson').addEventListener('change', async e => {
-    const f = e.target.files[0]; if (!f) return;
+  const soldFiles = async e => {
+    const files = Array.prototype.slice.call(e.target.files);
+    if (!files.length) return;
     try {
-      const d = JSON.parse(await f.text());
-      saveSold(Array.isArray(d) ? d : (d.recs || []));
-    } catch (err){ alert('JSONを読めませんでした。'); }
-  });
+      const recs = await readAnyFiles(files, (i, n, name) =>
+        flash('soldFlash', '読み取り中… (' + i + '/' + n + ') ' + esc(name), 'busy'));
+      saveSold(recs, files.length);
+    } catch (err){
+      flash('soldFlash', '読み取れませんでした：' + esc(err.message), 'err');
+    }
+  };
+  $('soldPdf').addEventListener('change', soldFiles);
+  $('soldJson').addEventListener('change', soldFiles);
   $('btnSoldText').addEventListener('click', () => {
     const t = $('soldText').value;
     if (!t.trim()){ alert('テキストを貼り付けてください。'); return; }
-    saveSold(parseReins(t));
+    saveSold(parseReins(t), 1);
   });
-  function saveSold(recs){
-    if (!recs.length){ alert('明細を読み取れませんでした。'); return; }
+  function saveSold(recs, nfiles){
+    if (!recs.length){
+      flash('soldFlash', '明細を読み取れませんでした。REINSの成約検索結果PDF（明細が一覧で並ぶ形式）か' +
+            'ご確認ください。', 'err');
+      return;
+    }
     const key = $('soldKind').value === 'マンション' ? K.sold_m : K.sold_k;
     const mode = $('soldMode').value;
     const prev = (mode === 'add' && load(key)) ? load(key).recs : [];
@@ -1449,15 +1516,24 @@ window.addEventListener('DOMContentLoaded', () => {
       refreshStatus();
       const span = yearSpan(merged);
       if (span) $('soldYears').value = span.years;
+      flash('soldFlash',
+            '✓ ' + $('soldKind').value + 'の成約データを保存しました &nbsp;' +
+            '<span class="big">' + merged.length + '件</span>' +
+            (nfiles > 1 ? '（' + nfiles + 'ファイル）' : '') +
+            '<br>新規 ' + add + '件' + (dup ? ' ／ 重複 ' + dup + '件は除外' : '') +
+            (span ? ' ／ ' + span.from + '〜' + span.to + '年（' + span.years + '年分）' : ''));
       log('成約データを保存しました：新規' + add + '件' + (dup ? '／重複' + dup + '件は除外' : '') +
           '／合計' + merged.length + '件' + (span ? '（' + span.from + '〜' + span.to + '年）' : ''));
+    } else {
+      flash('soldFlash', '保存できませんでした（データが大きすぎる可能性があります）。', 'err');
     }
   }
 
   $('kuikiPdf').addEventListener('change', async e => {
     const f = e.target.files[0]; if (!f) return;
+    flash('kuikiFlash', '読み取り中… ' + esc(f.name), 'busy');
     try { saveSchool(parseSchoolTable(await pdfToText(f))); }
-    catch (err){ alert(err.message); }
+    catch (err){ flash('kuikiFlash', '読み取れませんでした：' + esc(err.message), 'err'); }
   });
   $('kuikiJson').addEventListener('change', async e => {
     const f = e.target.files[0]; if (!f) return;
@@ -1470,9 +1546,17 @@ window.addEventListener('DOMContentLoaded', () => {
     saveSchool(parseSchoolTable(t));
   });
   function saveSchool(db){
-    if (!db || !db.towns || !Object.keys(db.towns).length){ alert('校区を読み取れませんでした。'); return; }
+    if (!db || !db.towns || !Object.keys(db.towns).length){
+      flash('kuikiFlash', '校区を読み取れませんでした。通学区域表のPDFかご確認ください。', 'err');
+      return;
+    }
     db.sho_list = db.sho_list || [...new Set(Object.values(db.towns).flatMap(t => t.sho))].sort();
-    if (store(K.school, db)){ refreshStatus(); log('校区データを保存しました（町名' + Object.keys(db.towns).length + '）'); }
+    if (store(K.school, db)){
+      refreshStatus();
+      flash('kuikiFlash', '✓ 校区データを保存しました &nbsp;<span class="big">小学校区' +
+            db.sho_list.length + '</span> ／ 町名 ' + Object.keys(db.towns).length);
+      log('校区データを保存しました（町名' + Object.keys(db.towns).length + '）');
+    }
   }
 
   const OV_SAMPLE = {
@@ -1502,11 +1586,13 @@ window.addEventListener('DOMContentLoaded', () => {
     const f = e.target.files[0]; if (!f) return;
     try {
       const d = JSON.parse(await f.text());
-      if (d.sold_mansion) store(K.sold_m, d.sold_mansion);
-      if (d.sold_kodate) store(K.sold_k, d.sold_kodate);
-      if (d.school) store(K.school, d.school);
-      if (d.override) store(K.ov, d.override);
-      refreshStatus(); log('データを読み込みました');
+      applyBundle(d);
+      refreshStatus();
+      const m = load(K.sold_m), k = load(K.sold_k), sc = load(K.school);
+      flash('importFlash', '✓ データを読み込みました<br>マンション ' + (m ? m.recs.length : 0) +
+            '件 ／ 戸建て ' + (k ? k.recs.length : 0) + '件 ／ 小学校区 ' +
+            (sc ? sc.sho_list.length : 0));
+      log('データを読み込みました');
     } catch (err){ alert('読み込めませんでした。'); }
   });
   $('btnClear').addEventListener('click', () => {
@@ -1516,8 +1602,10 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   $('btnShared').addEventListener('click', async () => {
+    flash('sharedFlash', '共有データを確認中…', 'busy');
     const ok = await loadShared(true);
-    if (!ok) alert('共有データを読み込めませんでした。data/funnel-data.json が置かれているかご確認ください。');
+    if (!ok) flash('sharedFlash', '共有データを読み込めませんでした。' +
+      'data/funnel-data.json がこのページと同じ場所に置かれているかご確認ください。', 'err');
   });
   $('btnMake').addEventListener('click', makeSheet);
   $('relaxClose').addEventListener('click', () => { $('relaxBox').style.display = 'none'; });
