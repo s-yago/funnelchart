@@ -60,6 +60,20 @@ details.box>summary{cursor:pointer; font-weight:700; color:var(--navy); font-siz
 #log{white-space:pre-wrap; font-size:13px; color:#444; background:#f6f8fa; border-radius:6px;
      padding:8px 10px; margin-top:10px; max-height:150px; overflow:auto}
 
+/* ===== 条件を緩める提案ダイアログ ===== */
+#relaxBox{position:fixed; inset:0; background:rgba(15,30,45,.45); z-index:50;
+          display:flex; align-items:center; justify-content:center; padding:20px}
+.relaxCard{background:#fff; border-radius:12px; padding:20px 22px; max-width:560px; width:100%;
+           box-shadow:0 8px 30px rgba(0,0,0,.3); max-height:86vh; overflow:auto}
+.relaxCard h3{margin:0 0 6px; font-size:19px; color:var(--navy)}
+.relaxCard .relaxLead{margin:0 0 14px; font-size:15px; color:#555}
+.relaxOpt{display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+          background:#f2f7fc; border:1px solid #b9c4cf; color:var(--ink);
+          font-size:17px; font-weight:400; padding:12px 14px; border-radius:8px; margin-bottom:8px}
+.relaxOpt:hover{background:#e3eef8}
+.relaxOpt b{color:var(--navy); font-weight:700}
+.relaxOpt .cnt{margin-left:auto; font-size:20px; font-weight:700; color:#b45309; white-space:nowrap}
+
 /* ===== A4横シート ===== */
 .stagebox{background:#fff; box-shadow:0 1px 6px rgba(0,0,0,.18); overflow:hidden; border-radius:6px}
 .sheetscale{transform-origin:top left}
@@ -133,6 +147,15 @@ table.d .empty{color:#888; font-size:14px; padding:14px}
   <h1>物件希少性ファネルチャート</h1>
   <span class="sub">REINSの売出・成約データから、商談用A4シートを作成</span>
 </header>
+
+<div id="relaxBox" class="noprint" style="display:none">
+  <div class="relaxCard">
+    <h3 id="relaxTitle"></h3>
+    <p class="relaxLead">条件を少し広げると候補が出ます。押すとその条件で作り直します。</p>
+    <div id="relaxList"></div>
+    <div class="btns"><button class="sub" id="relaxClose">このままにする</button></div>
+  </div>
+</div>
 
 <div class="wrap">
 <!-- ============ 操作パネル ============ -->
@@ -795,35 +818,46 @@ function buildSteps(c){
   const steps = [];
   if (c.school) steps.push([c.school + '小学校区',
     r => (r.school_confident && r.school === c.school) ||
-         (!r.school_confident && Array.isArray(r.school) && r.school.indexOf(c.school) >= 0), null]);
-  if (c.town) steps.push([c.town, r => (r.town || '').startsWith(c.town), null]);
-  if (c.station) steps.push([c.station + '駅', r => (r.station || '') === c.station, 'station']);
-  if (c.taishin === 'only') steps.push(['新耐震', r => shintaishin(r) === true, 'built_y']);
-  else if (c.taishin === 'old') steps.push(['旧耐震', r => shintaishin(r) === false, 'built_y']);
+         (!r.school_confident && Array.isArray(r.school) && r.school.indexOf(c.school) >= 0),
+    null, { input: 'school', clear: '' }]);
+  if (c.town) steps.push([c.town, r => (r.town || '').startsWith(c.town), null, { input: 'town', clear: '' }]);
+  if (c.station) steps.push([c.station + '駅', r => (r.station || '') === c.station, 'station',
+    { input: 'station', clear: '' }]);
+  if (c.taishin === 'only') steps.push(['新耐震', r => shintaishin(r) === true, 'built_y',
+    { input: 'taishin', clear: 'both' }]);
+  else if (c.taishin === 'old') steps.push(['旧耐震', r => shintaishin(r) === false, 'built_y',
+    { input: 'taishin', clear: 'both' }]);
   if (c.areaMin || c.areaMax){
     const key = c.kind === '戸建て' ? 'bldg_area' : 'area';
     const head = (c.kind === '戸建て' ? '建物' : '専有') + '面積 ';
     const lab = head + (c.areaMin && !c.areaMax ? c.areaMin + '㎡以上'
       : (c.areaMax && !c.areaMin ? c.areaMax + '㎡以下' : c.areaMin + '〜' + c.areaMax + '㎡'));
     steps.push([lab, r => r[key] != null &&
-      (!c.areaMin || r[key] >= c.areaMin) && (!c.areaMax || r[key] <= c.areaMax), key]);
+      (!c.areaMin || r[key] >= c.areaMin) && (!c.areaMax || r[key] <= c.areaMax), key,
+      c.areaMin ? { input: 'areaMin', dir: 'min', key: key, clear: '' }
+                : { input: 'areaMax', dir: 'max', key: key, clear: '' }]);
   }
   if (c.landMin) steps.push(['土地 ' + c.landMin + '㎡以上',
-    r => r.land_area != null && r.land_area >= c.landMin, 'land_area']);
+    r => r.land_area != null && r.land_area >= c.landMin, 'land_area',
+    { input: 'landMin', dir: 'min', key: 'land_area', clear: '' }]);
   if (c.madori){
     let re = null;
     try { re = new RegExp(c.madori); } catch (e) { re = null; }
     if (re) steps.push([c.madori.replace(/\|/g, '・'),
-      r => re.test((r.madori || '').normalize('NFKC')), 'madori']);
+      r => re.test((r.madori || '').normalize('NFKC')), 'madori', { input: 'madori', clear: '' }]);
   }
   if (c.priceMax) steps.push([Number(c.priceMax).toLocaleString('ja-JP') + '万円以下',
-    r => r.price != null && r.price <= c.priceMax, 'price']);
+    r => r.price != null && r.price <= c.priceMax, 'price',
+    { input: 'priceMax', dir: 'max', key: 'price', clear: '' }]);
   if (c.builtAfter) steps.push([c.builtAfter + '年以降築',
-    r => r.built_y != null && r.built_y >= c.builtAfter, 'built_y']);
+    r => r.built_y != null && r.built_y >= c.builtAfter, 'built_y',
+    { input: 'builtAfter', dir: 'min', key: 'built_y', clear: '' }]);
   if (c.walkMax) steps.push(['駅徒歩' + c.walkMax + '分以内',
-    r => r.walk != null && r.walk <= c.walkMax, 'walk']);
+    r => r.walk != null && r.walk <= c.walkMax, 'walk',
+    { input: 'walkMax', dir: 'max', key: 'walk', clear: '' }]);
   if (c.floorMin) steps.push([c.floorMin + '階以上',
-    r => r.floor != null && r.floor >= c.floorMin, 'floor']);
+    r => r.floor != null && r.floor >= c.floorMin, 'floor',
+    { input: 'floorMin', dir: 'min', key: 'floor', clear: '' }]);
   return steps;
 }
 
@@ -834,14 +868,61 @@ const FIELD_JA = { floor:'所在階', walk:'駅からの徒歩分数', built_y:'
 /* 0件になる段は使わず、その手前で打ち止める（商談が止まらないように） */
 function buildStages(recs, steps){
   const stages = [['全体', recs.length]];
-  let cur = recs; const applied = []; let dropped = null;
+  let cur = recs; const applied = []; let dropped = null, dropIdx = -1;
   for (const st of steps){
     const label = st[0], fn = st[1];
     const nxt = cur.filter(fn);
-    if (!nxt.length){ dropped = label; break; }
+    if (!nxt.length){ dropped = label; dropIdx = applied.length; break; }
     cur = nxt; applied.push(st); stages.push([label, cur.length]);   // st ごと渡す（項目名を保つ）
   }
-  return { stages, final: cur, applied, dropped };
+  return { stages, final: cur, applied, dropped, dropIdx };
+}
+
+/* 0件になったとき、どう緩めれば候補が出るかを提案する */
+const UNIT_LABEL = {
+  priceMax: v => Number(v).toLocaleString('ja-JP') + '万円以下',
+  areaMin: v => v + '㎡以上', areaMax: v => v + '㎡以下',
+  landMin: v => '土地' + v + '㎡以上',
+  walkMax: v => '駅徒歩' + v + '分以内', floorMin: v => v + '階以上',
+  builtAfter: v => v + '年以降築'
+};
+
+function relaxSuggestions(stock, steps, dropIdx, want){
+  const out = [];
+  if (dropIdx < 0 || dropIdx >= steps.length) return out;
+  const pass = (arr, skip) => steps.reduce(
+    (a, st, j) => (j === skip ? a : a.filter(st[1])), arr);
+
+  // (A) 落ちた条件そのものを少し広げる
+  const st = steps[dropIdx];
+  const meta = st[3] || {};
+  const before = steps.slice(0, dropIdx).reduce((a, x) => a.filter(x[1]), stock);
+  if (meta.dir && meta.key){
+    const rest = steps.slice(dropIdx + 1);            // 後ろの条件も満たすものだけ見る
+    const vals = before.filter(r => rest.every(x => x[1](r)))
+                       .map(r => r[meta.key]).filter(v => v != null)
+                       .sort((a, b) => meta.dir === 'max' ? a - b : b - a);
+    for (const n of want){
+      if (vals.length >= n){
+        let v = vals[n - 1];
+        v = meta.key === 'price' ? (meta.dir === 'max' ? Math.ceil(v / 10) * 10 : Math.floor(v / 10) * 10)
+                                 : (meta.dir === 'max' ? Math.ceil(v) : Math.floor(v));
+        const label = (UNIT_LABEL[meta.input] || (x => String(x)))(v);
+        if (!out.some(o => o.value === String(v) && o.input === meta.input))
+          out.push({ input: meta.input, value: String(v), text: label + 'にすると', count: n });
+      }
+    }
+  }
+
+  // (B) ほかの条件を1つ外す（落ちた条件は残したまま）
+  steps.forEach((x, j) => {
+    if (j === dropIdx) return;
+    const m = x[3];
+    if (!m) return;
+    const n = pass(stock, j).length;
+    if (n > 0) out.push({ input: m.input, value: m.clear, text: '「' + x[0] + '」を外すと', count: n });
+  });
+  return out;
 }
 
 /* ---- LOGIC-END ---- */
@@ -1073,7 +1154,13 @@ function render(res, c, soldAll){
   stages[0] = [esc(city + ' ' + c.kind + '売出'), STOCK.length];
   if (stages.length > 1) stages[stages.length - 1][0] += '<br>＝ ご条件に合致';
 
-  let band = '<div class="b1">ご条件に合う現在の売出物件は、この<span class="big">' + res.final.length + '件</span>がすべてです。</div>';
+  let band;
+  if (res.dropped){
+    band = '<div class="b1">「' + esc(res.dropped) + '」まで含めたご条件に合う売出物件は、' +
+           '<span class="big">現在ありません</span>。（この条件を外すと' + res.final.length + '件）</div>';
+  } else {
+    band = '<div class="b1">ご条件に合う現在の売出物件は、この<span class="big">' + res.final.length + '件</span>がすべてです。</div>';
+  }
   if (sold.length){
     band += '<p>過去' + c.soldYears + '年間の同条件の成約は<span class="em">' + sold.length +
             '件</span>、年平均<span class="em">' + per.toFixed(1) + '件</span>のペースです。</p>';
@@ -1082,11 +1169,13 @@ function render(res, c, soldAll){
   } else {
     band += '<p>過去' + c.soldYears + '年間で、同じご条件の成約は記録上ありません。</p>';
   }
-  if (res.dropped)
-    band += '<p class="warn">※「' + esc(res.dropped) + '」の条件では0件になるため、その手前までの条件で集計しています。</p>';
+
 
   // ---- 用紙下部の注意書き ----
   const notes = [];
+  if (res.dropped){
+    notes.push('※ 成約実績はご入力の条件すべてで集計しています。ファネルは0件になる手前の段までを表示しています。');
+  }
   if (res.uncertain){
     const u = res.uncertain;
     notes.push('※ ※印の物件は、町名だけでは校区が確定しません（' + esc(u.labels.join('／')) +
@@ -1105,9 +1194,11 @@ function render(res, c, soldAll){
     notes.push('※ 成約データのうち' + parts + 'は記載がなく、この条件では集計に含まれていません。');
   }
 
+  const lead = res.dropped ? '■ 「' + esc(res.dropped) + '」を外した場合の売出物件'
+                           : '■ ご条件に合う現在の売出物件';
   const head1 = stockRest > 0
-    ? '■ ご条件に合う現在の売出物件（全' + res.final.length + '件／' + stockView.length + '件を表示）'
-    : '■ ご条件に合う現在の売出物件（' + res.final.length + '件すべて）';
+    ? lead + '（全' + res.final.length + '件／' + stockView.length + '件を表示）'
+    : lead + '（' + res.final.length + '件すべて）';
 
   $('sheet').innerHTML =
     '<div class="title">' + esc(c.title || (city + ' ' + c.kind + ' ご条件に合う物件')) + '</div>' +
@@ -1142,10 +1233,12 @@ function renderFit(res, c, soldAll){
       const st = getComputedStyle(el);
       need += el.offsetHeight + parseFloat(st.marginTop || 0) + parseFloat(st.marginBottom || 0);
     });
-    const over = need - (m.clientHeight - 10);   // -10 は印刷時の差を吸収する余白
+    const over = need - (m.clientHeight - 4);    // -4 は印刷時の差を吸収する余白
     if (over <= 0) break;
-    if (soldRows > 1) soldRows -= 1;
+    // 行数の多い方から1行ずつ減らす（片方だけが極端に短くならないように）
+    if (soldRows >= stockRows && soldRows > 1) soldRows -= 1;
     else if (stockRows > 1) stockRows -= 1;
+    else if (soldRows > 1) soldRows -= 1;
     else break;
   }
 }
@@ -1177,10 +1270,10 @@ function makeSheet(){
   const steps = buildSteps(c);
   const res = buildStages(STOCK, steps);
 
-  // 成約側にも同じ条件を当てながら、「記載なしで外れた件数」を数える
+  // 成約側は入力した条件すべてで絞る（0件で落とした段も当てる）
   let cur = soldCopy;
   res.missing = [];
-  for (const [, fn, field] of res.applied){
+  for (const [, fn, field] of steps){
     if (field){
       const miss = cur.filter(r => r[field] == null).length;
       if (miss) res.missing.push({ field, miss });
@@ -1213,6 +1306,29 @@ function makeSheet(){
 
   log('作成: ' + res.stages.map(s => s[0] + ' ' + s[1] + '件').join(' → ') +
       (res.dropped ? '（「' + res.dropped + '」は0件のため不適用）' : ''));
+
+  if (res.dropped) showRelax(res, steps, c);
+  else $('relaxBox').style.display = 'none';
+}
+
+/* 0件になった条件の緩め方を提案する */
+function showRelax(res, steps, c){
+  const list = relaxSuggestions(STOCK, steps, res.dropIdx, [1, 2, 3]);
+  if (!list.length){ $('relaxBox').style.display = 'none'; return; }
+  $('relaxTitle').textContent = '「' + res.dropped + '」まで含めると売出は0件です';
+  $('relaxList').innerHTML = list.slice(0, 6).map((o, i) =>
+    '<button class="relaxOpt" data-i="' + i + '">' +
+    '<span><b>' + esc(o.text) + '</b></span>' +
+    '<span class="cnt">' + o.count + '件</span></button>').join('');
+  Array.prototype.forEach.call($('relaxList').querySelectorAll('.relaxOpt'), btn => {
+    btn.addEventListener('click', () => {
+      const o = list[+btn.dataset.i];
+      $(o.input).value = o.value;
+      $('relaxBox').style.display = 'none';
+      makeSheet();
+    });
+  });
+  $('relaxBox').style.display = 'flex';
 }
 
 /* ---------- 画面イベント ---------- */
@@ -1364,6 +1480,10 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   $('btnMake').addEventListener('click', makeSheet);
+  $('relaxClose').addEventListener('click', () => { $('relaxBox').style.display = 'none'; });
+  $('relaxBox').addEventListener('click', e => {
+    if (e.target === $('relaxBox')) $('relaxBox').style.display = 'none';
+  });
   $('btnPrint').addEventListener('click', () => window.print());
 });
 </script>
