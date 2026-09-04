@@ -508,12 +508,20 @@ function expand(town){
 /* 通学区域表テキスト → 校区DB */
 function parseSchoolTable(raw){
   const lines = [];
-  for (const ln of raw.split('\n')){
-    const s = ln.replace(/\s+$/, '');
-    if (!s.trim()) continue;
-    if (/通学区域表|改正/.test(s) || /^\s*\d\/\d\s*$/.test(s)) continue;
-    if (/^\s*小学校\s+中学校\s+町名\s*$/.test(s)) continue;
-    lines.push(s);
+  // ページごとに処理する。PDFの起こし方によってページごとに字下げ幅が違うため、
+  // ページ単位で行頭の共通余白を取り除いてから列を判定する。
+  for (const page of raw.split('\f')){
+    const keep = [];
+    for (const ln of page.split('\n')){
+      const s = ln.replace(/\s+$/, '');
+      if (!s.trim()) continue;
+      if (/通学区域表|改正/.test(s) || /^\s*\d\/\d\s*$/.test(s)) continue;
+      if (/^\s*小学校\s+中学校\s+町名\s*$/.test(s)) continue;
+      keep.push(s);
+    }
+    if (!keep.length) continue;
+    const indent = keep.reduce((m, l) => Math.min(m, l.length - l.replace(/^ +/, '').length), 99);
+    for (const l of keep) lines.push(indent > 0 && indent < 99 ? l.slice(indent) : l);
   }
   const entries = [];
   let sho = null, chu = null, buf = [];
@@ -531,7 +539,7 @@ function parseSchoolTable(raw){
     }
   };
   for (const s of lines){
-    const m = s.match(/^(\S+?)\s{2,}(\S+?)\s{2,}(\S.*)$/);
+    const m = s.match(/^(\S+?)\s{2,}(\S+?)\s+(\S.*)$/);
     const m2 = s.match(/^\s{2,}(\S+?)\s{2,}(\S.*)$/);
     if (m && !s.startsWith(' ')){
       flush(); buf = [];
