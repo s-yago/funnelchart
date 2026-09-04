@@ -86,6 +86,7 @@ table.d th{border:1px solid var(--line)}
 table.d tr:nth-child(even) td{background:var(--alt)}
 table.d td.num{text-align:right; padding-right:8px}
 table.d td.name{text-align:left; padding-left:8px}
+table.d td.name .mk{color:#bf9000; font-weight:700; margin-right:3px}
 table.d .empty{color:#888; font-size:14px; padding:14px}
 
 /* ファネル */
@@ -93,7 +94,7 @@ table.d .empty{color:#888; font-size:14px; padding:14px}
 .fstage{display:flex; align-items:stretch; gap:6px}
 .fbar{flex:1; position:relative; display:flex; flex-direction:column; align-items:center;
       justify-content:center; color:#fff; text-align:center; min-height:0}
-.fbar .lab{font-size:13px; font-weight:700; line-height:1.25; padding:0 6px; position:relative; z-index:1}
+.fbar .lab{font-size:13px; font-weight:700; line-height:1.3; padding:0 6px; position:relative; z-index:1}
 .fbar .val{font-size:19px; font-weight:700; line-height:1.2; position:relative; z-index:1}
 .fbar.last .val{font-size:27px}
 .fbar .bg{position:absolute; inset:0}
@@ -211,8 +212,16 @@ table.d .empty{color:#888; font-size:14px; padding:14px}
 
   <details class="box">
     <summary>成約データ</summary>
-    <label class="f">種別</label>
-    <select id="soldKind"><option>マンション</option><option>戸建て</option></select>
+    <div class="row2">
+      <div><label class="f">種別</label>
+        <select id="soldKind"><option>マンション</option><option>戸建て</option></select></div>
+      <div><label class="f">読み込み方</label>
+        <select id="soldMode">
+          <option value="add">追加する（今のデータに足す）</option>
+          <option value="replace">入れ替える（今のデータを消す）</option>
+        </select></div>
+    </div>
+    <p class="hint">同じ物件番号は自動で除きます。分割されたPDFや、毎年の追加分はそのまま足していけます。</p>
     <label class="f">REINSの成約PDF</label>
     <input type="file" id="soldPdf" accept="application/pdf" class="file">
     <label class="f">またはJSON（funnel_chart.py の成約データ）</label>
@@ -466,6 +475,14 @@ function norm(t){
   t = (t || '').normalize('NFKC').trim().replace(/ /g, '').replace(/ケ/g, 'ヶ');
   const pairs = [['舘','館'],['曽','曾'],['冨','富'],['嶋','島'],['渕','淵'],['沢','澤'],['タ林','夕林']];
   for (const [a, b] of pairs) t = t.split(a).join(b);
+  // 「上ニ杉」「ニ松」のようにカタカナのニで書かれた漢数字を二に直す
+  // （「ニュータウン」など本当のカタカナ語は前後の文字で見分けて残す）
+  const isKata = ch => !!ch && /[ァ-ヴー]/.test(ch);
+  let out = '';
+  for (let i = 0; i < t.length; i++){
+    out += (t[i] === 'ニ' && !isKata(t[i - 1]) && !isKata(t[i + 1])) ? '二' : t[i];
+  }
+  t = out;
   let cut = false;
   for (let n = 2; n < 7; n++){
     if (t.length > n * 2 && t.slice(0, n) === t.slice(n, n * 2)){ t = t.slice(n); cut = true; break; }
@@ -635,42 +652,55 @@ function annotateSchool(recs, db, ov){
 
 /* ---------- 絞り込み ---------- */
 function buildSteps(c){
+  // [ラベル, 判定, 記載なしを確認する項目]
   const steps = [];
-  if (c.school) steps.push([c.school + '小学校区', r => r.school === c.school && r.school_confident]);
-  if (c.town) steps.push([c.town, r => (r.town || '').startsWith(c.town)]);
-  if (c.station) steps.push([c.station + '駅', r => (r.station || '') === c.station]);
-  if (c.taishin === 'only') steps.push(['新耐震', r => shintaishin(r) === true]);
-  else if (c.taishin === 'old') steps.push(['旧耐震', r => shintaishin(r) === false]);
+  if (c.school) steps.push([c.school + '小学校区',
+    r => (r.school_confident && r.school === c.school) ||
+         (!r.school_confident && Array.isArray(r.school) && r.school.indexOf(c.school) >= 0), null]);
+  if (c.town) steps.push([c.town, r => (r.town || '').startsWith(c.town), null]);
+  if (c.station) steps.push([c.station + '駅', r => (r.station || '') === c.station, 'station']);
+  if (c.taishin === 'only') steps.push(['新耐震', r => shintaishin(r) === true, 'built_y']);
+  else if (c.taishin === 'old') steps.push(['旧耐震', r => shintaishin(r) === false, 'built_y']);
   if (c.areaMin || c.areaMax){
     const key = c.kind === '戸建て' ? 'bldg_area' : 'area';
     const head = (c.kind === '戸建て' ? '建物' : '専有') + '面積 ';
     const lab = head + (c.areaMin && !c.areaMax ? c.areaMin + '㎡以上'
       : (c.areaMax && !c.areaMin ? c.areaMax + '㎡以下' : c.areaMin + '〜' + c.areaMax + '㎡'));
     steps.push([lab, r => r[key] != null &&
-      (!c.areaMin || r[key] >= c.areaMin) && (!c.areaMax || r[key] <= c.areaMax)]);
+      (!c.areaMin || r[key] >= c.areaMin) && (!c.areaMax || r[key] <= c.areaMax), key]);
   }
-  if (c.landMin) steps.push(['土地 ' + c.landMin + '㎡以上', r => r.land_area != null && r.land_area >= c.landMin]);
+  if (c.landMin) steps.push(['土地 ' + c.landMin + '㎡以上',
+    r => r.land_area != null && r.land_area >= c.landMin, 'land_area']);
   if (c.madori){
     let re = null;
     try { re = new RegExp(c.madori); } catch (e) { re = null; }
-    if (re) steps.push([c.madori.replace(/\|/g, '・'), r => re.test((r.madori || '').normalize('NFKC'))]);
+    if (re) steps.push([c.madori.replace(/\|/g, '・'),
+      r => re.test((r.madori || '').normalize('NFKC')), 'madori']);
   }
   if (c.priceMax) steps.push([Number(c.priceMax).toLocaleString('ja-JP') + '万円以下',
-                              r => r.price != null && r.price <= c.priceMax]);
-  if (c.builtAfter) steps.push([c.builtAfter + '年以降築', r => r.built_y != null && r.built_y >= c.builtAfter]);
-  if (c.walkMax) steps.push(['駅徒歩' + c.walkMax + '分以内', r => r.walk != null && r.walk <= c.walkMax]);
-  if (c.floorMin) steps.push([c.floorMin + '階以上', r => r.floor != null && r.floor >= c.floorMin]);
+    r => r.price != null && r.price <= c.priceMax, 'price']);
+  if (c.builtAfter) steps.push([c.builtAfter + '年以降築',
+    r => r.built_y != null && r.built_y >= c.builtAfter, 'built_y']);
+  if (c.walkMax) steps.push(['駅徒歩' + c.walkMax + '分以内',
+    r => r.walk != null && r.walk <= c.walkMax, 'walk']);
+  if (c.floorMin) steps.push([c.floorMin + '階以上',
+    r => r.floor != null && r.floor >= c.floorMin, 'floor']);
   return steps;
 }
+
+/* 記載なしの項目名（注意書き用） */
+const FIELD_JA = { floor:'所在階', walk:'駅からの徒歩分数', built_y:'築年月', area:'専有面積',
+                   bldg_area:'建物面積', land_area:'土地面積', price:'価格', madori:'間取り', station:'最寄駅' };
 
 /* 0件になる段は使わず、その手前で打ち止める（商談が止まらないように） */
 function buildStages(recs, steps){
   const stages = [['全体', recs.length]];
   let cur = recs; const applied = []; let dropped = null;
-  for (const [label, fn] of steps){
+  for (const st of steps){
+    const label = st[0], fn = st[1];
     const nxt = cur.filter(fn);
     if (!nxt.length){ dropped = label; break; }
-    cur = nxt; applied.push([label, fn]); stages.push([label, cur.length]);
+    cur = nxt; applied.push(st); stages.push([label, cur.length]);   // st ごと渡す（項目名を保つ）
   }
   return { stages, final: cur, applied, dropped };
 }
@@ -765,12 +795,25 @@ async function pdfToText(file){
   return out.join('\n');
 }
 
+/* 成約データが何年分かを求める */
+function yearSpan(recs){
+  const ys = recs.map(r => r.deal_y).filter(Boolean);
+  if (!ys.length) return null;
+  const from = Math.min.apply(null, ys), to = Math.max.apply(null, ys);
+  return { from, to, years: to - from + 1 };
+}
+
 /* ---------- 保存データの状態表示 ---------- */
 function refreshStatus(){
   const sm = load(K.sold_m), sk = load(K.sold_k), sc = load(K.school), ov = load(K.ov);
+  const desc = d => {
+    if (!d) return '未登録';
+    const sp = yearSpan(d.recs);
+    return d.recs.length + '件' + (sp ? '／' + sp.from + '〜' + sp.to + '年（' + sp.years + '年分）' : '') +
+           '／' + d.saved + '更新';
+  };
   $('soldStat').innerHTML =
-    'マンション：<b>' + (sm ? sm.recs.length + '件（' + sm.saved + '）' : '未登録') + '</b><br>' +
-    '戸建て：<b>' + (sk ? sk.recs.length + '件（' + sk.saved + '）' : '未登録') + '</b>';
+    'マンション：<b>' + desc(sm) + '</b><br>戸建て：<b>' + desc(sk) + '</b>';
   $('kuikiStat').innerHTML = sc
     ? '登録済み：<b>小学校区' + sc.sho_list.length + '／町名' + Object.keys(sc.towns).length + '</b>'
     : '<span class="ng">未登録</span>（小学校区での絞り込みには必要です）';
@@ -850,7 +893,8 @@ function tableHtml(recs, opt){
   for (const r of recs){
     h += '<tr>';
     if (sold) h += '<td>' + (r.deal_y && r.deal_m ? r.deal_y + '/' + String(r.deal_m).padStart(2, '0') : '-') + '</td>';
-    h += '<td class="name">' + esc(d ? (r.town || '-') : (r.name || '（記載なし）')) + '</td>';
+    h += '<td class="name">' + (r._unc ? '<span class="mk">※</span>' : '') +
+         esc(d ? (r.town || '-') : (r.name || '（記載なし）')) + '</td>';
     if (d) h += '<td class="num">' + areaTxt(r.land_area) + '</td><td class="num">' + areaTxt(r.bldg_area) + '</td>';
     else h += '<td>' + (r.floor ? r.floor + '階' : '-') + '</td><td class="num">' + areaTxt(r.area) + '</td>';
     h += '<td>' + esc(han(r.madori)) + '</td>';
@@ -874,6 +918,12 @@ function render(res, c, soldAll){
   const per = sold.length / c.soldYears;
 
   const stages = res.stages.map(s => [esc(s[0]), s[1]]);
+  // 中学校区が1つに定まるなら、校区の段に併記する
+  if (c.school && res.chu && res.chu.length === 1){
+    for (const st of stages){
+      if (st[0] === esc(c.school + '小学校区')) st[0] += '<br>（' + esc(res.chu[0]) + '中学校区）';
+    }
+  }
   stages[0] = [esc(city + ' ' + c.kind + '売出'), STOCK.length];
   if (stages.length > 1) stages[stages.length - 1][0] += '<br>＝ ご条件に合致';
 
@@ -888,6 +938,26 @@ function render(res, c, soldAll){
   }
   if (res.dropped)
     band += '<p class="warn">※「' + esc(res.dropped) + '」の条件では0件になるため、その手前までの条件で集計しています。</p>';
+
+  // ---- 用紙下部の注意書き ----
+  const notes = [];
+  if (res.uncertain){
+    const u = res.uncertain;
+    notes.push('※ ※印の物件は、町名だけでは校区が確定しません（' + esc(u.labels.join('／')) +
+               '）。番地により分かれますので、詳しくはお調べください。' +
+               '売出' + u.stock + '件・成約' + u.sold + '件が該当します。');
+  }
+  if (c.school && res.chu && res.chu.length > 1){
+    notes.push('※ ' + esc(c.school) + '小学校区の物件は、' +
+               res.chu.map(x => esc(x) + '中学校').join('・') + 'に分かれます（町名により異なります）。');
+  }
+  if (c.school){
+    notes.push('※ 校区は町名からの判定です。番地により異なる場合がありますので、確定しない物件は市の通学区域表でご確認ください。');
+  }
+  if ((res.missing || []).length){
+    const parts = res.missing.map(m => '「' + (FIELD_JA[m.field] || m.field) + '」' + m.miss + '件').join('・');
+    notes.push('※ 成約データのうち' + parts + 'は記載がなく、この条件では集計に含まれていません。');
+  }
 
   const head1 = stockRest > 0
     ? '■ ご条件に合う現在の売出物件（全' + res.final.length + '件／' + stockView.length + '件を表示）'
@@ -908,8 +978,7 @@ function render(res, c, soldAll){
       (rest > 0 ? '<div class="note">※ このほかに同条件の成約が ' + rest + ' 件あり、合計 ' + sold.length + ' 件です。</div>' : '') +
     '</div></div>' +
     '<div class="band">' + band + '</div>' +
-    '<div class="foot">' +
-      (c.school ? '<span class="school">※ 校区は町名からの判定です。番地により異なる場合がありますので、「詳しくはお調べください」と記載のある物件は市の通学区域表でご確認ください。</span>' : '') +
+    '<div class="foot">' + notes.map(n => '<span class="school">' + n + '</span>').join('') +
       '出典: REINS 売買物件検索結果（在庫／成約）記載の明細のみを集計しています。「-」は記載がない項目です。' +
     '</div>';
   fitSheet();
@@ -961,7 +1030,39 @@ function makeSheet(){
 
   const steps = buildSteps(c);
   const res = buildStages(STOCK, steps);
-  res.sold = res.applied.reduce((arr, [, fn]) => arr.filter(fn), soldCopy);
+
+  // 成約側にも同じ条件を当てながら、「記載なしで外れた件数」を数える
+  let cur = soldCopy;
+  res.missing = [];
+  for (const [, fn, field] of res.applied){
+    if (field){
+      const miss = cur.filter(r => r[field] == null).length;
+      if (miss) res.missing.push({ field, miss });
+    }
+    cur = cur.filter(fn);
+  }
+  res.sold = cur;
+
+  // 校区で絞ったとき、対象がどの中学校区にあたるかを調べる
+  res.chu = null;
+  if (c.school){
+    const cs = [...new Set([...res.final, ...res.sold].map(r => r.school_chu).filter(Boolean))];
+    if (cs.length) res.chu = cs;
+  }
+
+  // 校区で絞ったとき、町名だけでは確定しない物件に印を付ける
+  res.uncertain = null;
+  if (c.school){
+    const mark = arr => arr.filter(r => !r.school_confident);
+    const us = mark(res.final), uk = mark(res.sold);
+    [...us, ...uk].forEach(r => { r._unc = true; });
+    if (us.length || uk.length){
+      const labels = [...new Set([...us, ...uk].map(r =>
+        (r.school_label || '').replace(/。詳しくはお調べください。$/, '')))].filter(Boolean);
+      res.uncertain = { stock: us.length, sold: uk.length, labels };
+    }
+  }
+
   renderFit(res, c, soldAll);
 
   log('作成: ' + res.stages.map(s => s[0] + ' ' + s[1] + '件').join(' → ') +
@@ -1022,8 +1123,22 @@ window.addEventListener('DOMContentLoaded', () => {
   function saveSold(recs){
     if (!recs.length){ alert('明細を読み取れませんでした。'); return; }
     const key = $('soldKind').value === 'マンション' ? K.sold_m : K.sold_k;
-    if (store(key, { recs, saved: new Date().toLocaleDateString('ja-JP') })){
-      refreshStatus(); log('成約データ ' + recs.length + '件を保存しました');
+    const mode = $('soldMode').value;
+    const prev = (mode === 'add' && load(key)) ? load(key).recs : [];
+    const idx = {};
+    prev.forEach(r => { idx[r.bukken_no] = r; });
+    let add = 0, dup = 0;
+    recs.forEach(r => {
+      if (idx[r.bukken_no]) dup++; else add++;
+      idx[r.bukken_no] = r;              // 同じ物件番号は新しい方で上書き
+    });
+    const merged = Object.keys(idx).map(k => idx[k]);
+    if (store(key, { recs: merged, saved: new Date().toLocaleDateString('ja-JP') })){
+      refreshStatus();
+      const span = yearSpan(merged);
+      if (span) $('soldYears').value = span.years;
+      log('成約データを保存しました：新規' + add + '件' + (dup ? '／重複' + dup + '件は除外' : '') +
+          '／合計' + merged.length + '件' + (span ? '（' + span.from + '〜' + span.to + '年）' : ''));
     }
   }
 
