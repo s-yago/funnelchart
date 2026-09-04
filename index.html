@@ -141,7 +141,12 @@ table.d .empty{color:#888; font-size:14px; padding:14px}
   <h2 class="sec">① 売出データ（今回の商談分）</h2>
   <label class="f">REINSの売出PDF</label>
   <input type="file" id="stockPdf" accept="application/pdf,.json" class="file">
-  <p class="hint">前に読み込んだデータを書き出したJSONも指定できます。</p>
+  <label class="f">読み込み方</label>
+  <select id="stockMode">
+    <option value="replace">入れ替える（新しく検索した分だけ）</option>
+    <option value="add">追加する（51件目以降の続きを足す）</option>
+  </select>
+  <p class="hint">レインズは1回に50件までしか出力できません。51件目以降は「追加する」で続けて読み込んでください。</p>
   <details class="box">
     <summary>PDFが読めないときはテキストを貼り付け</summary>
     <p class="hint">コマンドが使える場合は <code>pdftotext -layout 売出.pdf 売出.txt</code> の結果を貼ってください。</p>
@@ -285,6 +290,25 @@ const Z2H = s => (s || '').replace(/[０-９]/g, c => String.fromCharCode(c.char
 const MADORI = '[1-9１-９]?\\s*[ＳＬＤＫRＲ]{1,4}';
 const KIND_PAT = '(?:中古|新築)(?:マンション|戸建|一戸建|住宅)';
 const clean = s => s ? s.replace(/\s+/g, ' ').trim() : null;
+
+/* PDFによっては「富⼭市」のように部首の文字が使われている。通常の漢字に直す。 */
+const RADICAL_FIX = {'⻄':'西','⻑':'長','⻘':'青','⻢':'馬','⻩':'黄','⻭':'歯','⻯':'竜','⻲':'亀',
+                     '⻔':'門','⻗':'雨','⻟':'食','⻣':'骨','⻤':'鬼','⺼':'月','⻍':'辶','⻖':'阝',
+                     '戶':'戸','靑':'青','黃':'黄'};
+function fixKanji(text){
+  let out = '';
+  for (const ch of (text || '')){
+    const o = ch.codePointAt(0);
+    if ((o >= 0x2E80 && o <= 0x2FDF) || (o >= 0xF900 && o <= 0xFAFF)){
+      let n = ch.normalize('NFKC');
+      n = RADICAL_FIX[n] || RADICAL_FIX[ch] || n;
+      out += n;
+    } else {
+      out += RADICAL_FIX[ch] || ch;
+    }
+  }
+  return out;
+}
 const toInt = s => parseInt(String(s).replace(/,/g, ''), 10);
 
 /* ---------- REINSテキストのパーサ ---------- */
@@ -301,6 +325,24 @@ function builtOf(seg){
   if (m) return [parseInt(m[2]), parseInt(m[1])];
   return [null, null];
 }
+/* レイアウト保持テキストでの見た目の列位置（全角は2文字ぶん） */
+const WIDE = /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE6F\uFF00-\uFF60\uFFE0-\uFFE6]/;
+function vcol(s, i){
+  let w = 0;
+  for (let k = 0; k < i; k++) w += WIDE.test(s[k]) ? 2 : 1;
+  return w;
+}
+function lineFields(line){
+  const out = [];
+  const re = /\S(?:.*?\S)?(?=\s{2,}|$)/g;
+  let m;
+  while ((m = re.exec(line)) !== null){
+    if (m[0].trim()) out.push({ col: m.index, t: m[0] });
+    if (re.lastIndex === m.index) re.lastIndex++;
+  }
+  return out;
+}
+
 const JUNK_NAMES = ['一住','二住','一中','二中','商業','近商','準工','工業','一低','二低','準住','無指定','市街化','定めなし'];
 
 function nameMadoriFloor(seg){
@@ -364,6 +406,7 @@ function nameMadoriFloor(seg){
       if (head.slice(0, 6)) idx = lines.findIndex(l => l.includes(head.slice(0, 6)));
       if (idx >= 0){
         for (const nxt of lines.slice(idx + 1, idx + 5)){
+          if (!nxt.trim()) break;            // 空行より先は別の物件の断片
           const mm2 = nxt.match(new RegExp('^\\s*([0-9０-９]{1,2})(?:\\s+([1-9１-９]))?(?:\\s*' + MADORI + ')?\\s*$'));
           if (mm2){
             if (floor === null) floor = parseInt(Z2H(mm2[1]));
@@ -379,6 +422,66 @@ function nameMadoriFloor(seg){
   if (name && /^[-\s]*[\d.,]+\s*(万円|円)\s*$/.test(name)) name = null;
   if (name && (/^[-\d.,㎡\s]*$/.test(name) || JUNK_NAMES.includes(name))) name = null;
 
+  // (5) 建物名が長く、価格行の上下の行に分かれて出るレイアウト
+  //     （ブラウザでPDFから起こした場合によく起きる）
+  if (name === null){
+    let pi = null;
+    const mdEnd0 = new RegExp('(' + MADORI + ')\\s*$');
+    lines.forEach((line, i) => { if (/[\d.]\s*万円/.test(line) && mdEnd0.test(line)) pi = i; });
+    if (pi === null) lines.forEach((line, i) => { if (/[\d.]\s*万円/.test(line)) pi = i; });
+    if (pi !== null){
+      const parts = [];
+      for (const j of [pi - 1, pi + 1]){
+        if (j < 0 || j >= lines.length || !lines[j].trim()) continue;
+        if (/(万円|円|徒歩|停歩|バス|㎡|年（|階)/.test(lines[j])) continue;
+        const m5 = lines[j].match(/^\s*(\S(?:.*?\S)?)\s*$/);
+        if (m5 && vcol(lines[j], m5.index + m5[0].indexOf(m5[1])) >= 40
+            && !/^[-0-9０-９\s]*$/.test(m5[1])){
+          parts.push([j, m5[1]]);
+        }
+      }
+      if (parts.length){
+        parts.sort((a, b) => a[0] - b[0]);
+        name = clean(parts.map(x => x[1]).join(''));
+      }
+    }
+  }
+
+  // セルが折り返され、間取りの数字・所在階・建物名の続きが次の行に落ちる場合の補正
+  // 例）「… 3階              ＬＤＫ」／次行に「Ｅ ＦＯＲＴ」と「3」
+  let anchor = null;
+  const mdEnd = new RegExp('(' + MADORI + ')\\s*$');
+  lines.forEach((line, i) => {
+    if (!mdEnd.test(line)) return;
+    const fs = lineFields(line);
+    if (fs.length >= 2) anchor = { i, ncol: vcol(line, fs[fs.length - 2].col) };
+  });
+  if (anchor){
+    const digits = [];
+    for (const nxt of lines.slice(anchor.i + 1, anchor.i + 4)){
+      if (!nxt.trim()) break;                // 空行より先は別の物件の断片
+      if (/(万円|円|徒歩|停歩|バス|年（|㎡)/.test(nxt)) continue;
+      const re2 = /(?:^|\s{2,})([0-9０-９]{1,2})(?=\s{2,}|$)/g;
+      let m2;
+      while ((m2 = re2.exec(nxt)) !== null){
+        const at = nxt.indexOf(m2[1], m2.index);
+        if (vcol(nxt, at) >= 40) digits.push(parseInt(Z2H(m2[1])));
+      }
+      const m3 = nxt.match(/^\s*(\S(?:.*?\S)?)(?=\s{2,}|$)/);
+      if (m3 && name && Math.abs(vcol(nxt, m3.index + m3[0].indexOf(m3[1])) - anchor.ncol) <= 2
+          && !/^[0-9０-９\s]*$/.test(m3[1])){
+        name = name + m3[1];
+      }
+    }
+    if (digits.length){
+      if (madori && !/^[1-9１-９]/.test(madori)){
+        madori = String(digits[digits.length - 1]) + madori;
+        digits.pop();
+      }
+      if (floor === null && digits.length) floor = digits[digits.length - 1];
+    }
+  }
+
   if (floor === null){
     const mm = seg.match(/\s([0-9０-９]{1,2})\s*階\s/);
     if (mm) floor = parseInt(Z2H(mm[1]));
@@ -392,7 +495,7 @@ function normalizeText(text){
 }
 
 function parseReins(text){
-  text = normalizeText(text);
+  text = normalizeText(fixKanji(text));
   const recs = [];
   const heads = [];
   const re = new RegExp('(\\d{9,12})\\s+(' + KIND_PAT + ')', 'g');
@@ -507,22 +610,7 @@ function expand(town){
 
 /* 通学区域表テキスト → 校区DB */
 function parseSchoolTable(raw){
-  const lines = [];
-  // ページごとに処理する。PDFの起こし方によってページごとに字下げ幅が違うため、
-  // ページ単位で行頭の共通余白を取り除いてから列を判定する。
-  for (const page of raw.split('\f')){
-    const keep = [];
-    for (const ln of page.split('\n')){
-      const s = ln.replace(/\s+$/, '');
-      if (!s.trim()) continue;
-      if (/通学区域表|改正/.test(s) || /^\s*\d\/\d\s*$/.test(s)) continue;
-      if (/^\s*小学校\s+中学校\s+町名\s*$/.test(s)) continue;
-      keep.push(s);
-    }
-    if (!keep.length) continue;
-    const indent = keep.reduce((m, l) => Math.min(m, l.length - l.replace(/^ +/, '').length), 99);
-    for (const l of keep) lines.push(indent > 0 && indent < 99 ? l.slice(indent) : l);
-  }
+  raw = fixKanji(raw);
   const entries = [];
   let sho = null, chu = null, buf = [];
   const flush = () => {
@@ -538,16 +626,59 @@ function parseSchoolTable(raw){
       entries.push([sho, chu, joined]);
     }
   };
-  for (const s of lines){
-    const m = s.match(/^(\S+?)\s{2,}(\S+?)\s+(\S.*)$/);
-    const m2 = s.match(/^\s{2,}(\S+?)\s{2,}(\S.*)$/);
-    if (m && !s.startsWith(' ')){
-      flush(); buf = [];
-      sho = m[1]; chu = m[2]; buf.push(m[3]);
-    } else if (m2 && sho){
-      flush(); buf = [];
-      chu = m2[1]; buf.push(m2[2]);
-    } else buf.push(s.trim());
+  // 2文字以上の空白を列の区切りとみなし、各項目の開始位置（何文字目か）を取る
+  const fields = line => {
+    const out = [];
+    const re = /\S(?:.*?\S)?(?=\s{2,}|$)/g;
+    let m;
+    while ((m = re.exec(line)) !== null){
+      if (m[0].trim()) out.push({ t: m[0], col: m.index });
+      if (re.lastIndex === m.index) re.lastIndex++;
+    }
+    return out;
+  };
+
+  // ページごとに列の位置を測る（PDFの起こし方でページごとに字下げが変わるため）
+  for (const page of raw.split('\f')){
+    const keep = [];
+    for (const ln of page.split('\n')){
+      const t = ln.replace(/\s+$/, '');
+      if (!t.trim()) continue;
+      if (/通学区域表|改正/.test(t) || /^\s*\d\/\d\s*$/.test(t)) continue;
+      if (/^\s*小学校\s+中学校\s+町名\s*$/.test(t)) continue;
+      keep.push(t);
+    }
+    if (!keep.length) continue;
+
+    const indent = l => l.length - l.replace(/^ +/, '').length;
+    // 町名の列＝もっとも多く現れる字下げ（折り返し行が一番多いため）
+    const count = {};
+    keep.forEach(l => { count[indent(l)] = (count[indent(l)] || 0) + 1; });
+    let townCol = 0, best = -1;
+    for (const k in count) if (count[k] > best){ best = count[k]; townCol = +k; }
+    // 小学校の列＝町名より左にある行のうち、いちばん左
+    const heads = keep.filter(l => indent(l) < townCol - 2).map(indent);
+    const base = heads.length ? Math.min.apply(null, heads) : 0;
+
+    for (const line of keep){
+      const f = fields(line);
+      const ind = indent(line);
+      // 学校名らしい項目か（短くて、町名の並びではなく、「（前期課程）」のような続きでもない）
+      const nameLike = x => x && x.length <= 10 && !/[、，]/.test(x) && !/^[（(]/.test(x);
+      const isRow = f.length >= 3 && ind <= base + 2 && nameLike(f[0].t) && nameLike(f[1].t);
+      const isChu = !isRow && f.length >= 2 && ind > base + 2 && ind < townCol - 2 && nameLike(f[0].t);
+      if (isRow){
+        flush(); buf = [];
+        sho = f[0].t; chu = f[1].t;
+        buf.push(f.slice(2).map(x => x.t).join(''));
+      } else if (isChu && sho){
+        flush(); buf = [];
+        chu = f[0].t;
+        buf.push(f.slice(1).map(x => x.t).join(''));
+      } else {
+        buf.push(line.trim());
+      }
+    }
   }
   flush();
 
@@ -785,16 +916,23 @@ async function pdfToText(file){
       const x = it.transform[4], y = it.transform[5];
       let row = rows.find(r => Math.abs(r.y - y) < 3);
       if (!row){ row = { y, cells: [] }; rows.push(row); }
-      row.cells.push({ x, s: it.str });
+      row.cells.push({ x, s: it.str, w: it.width });
     }
     rows.sort((a, b) => b.y - a.y);
+    const spaceW = unit * 0.5;                 // 半角スペース1つ分の目安
     for (const row of rows){
       row.cells.sort((a, b) => a.x - b.x);
-      let line = '';
+      let line = '', end = null;
       for (const c of row.cells){
-        const col = Math.round(c.x / unit);
-        if (col > line.length) line += ' '.repeat(col - line.length);
+        if (end === null){
+          const pad = Math.max(0, Math.round(c.x / spaceW));
+          line += ' '.repeat(pad);
+        } else {
+          const gap = c.x - end;               // 直前の文字列の右端からの空き
+          if (gap > spaceW * 0.4) line += ' '.repeat(Math.max(1, Math.round(gap / spaceW)));
+        }
         line += c.s;
+        end = c.x + c.w;
       }
       out.push(line.replace(/\s+$/, ''));
     }
@@ -1079,10 +1217,24 @@ function makeSheet(){
 
 /* ---------- 画面イベント ---------- */
 function setStock(recs, src){
-  STOCK = recs;
-  $('stockStat').innerHTML = '売出データ：<b>' + recs.length + '件</b>（' + src + '）';
-  log('売出データ ' + recs.length + '件を読み込みました');
-  if (!recs.length) alert('明細を読み取れませんでした。REINSの検索結果PDF（明細形式）かご確認ください。');
+  if (!recs.length){
+    alert('明細を読み取れませんでした。REINSの検索結果PDF（明細が一覧で並ぶ形式）かご確認ください。');
+    return;
+  }
+  const mode = ($('stockMode') || {}).value || 'replace';
+  let add = recs.length, dup = 0;
+  if (mode === 'add' && STOCK.length){
+    const idx = {};
+    STOCK.forEach(r => { idx[r.bukken_no] = r; });
+    add = 0;
+    recs.forEach(r => { if (idx[r.bukken_no]) dup++; else add++; idx[r.bukken_no] = r; });
+    STOCK = Object.keys(idx).map(k => idx[k]);
+  } else {
+    STOCK = recs;
+  }
+  $('stockStat').innerHTML = '売出データ：<b>' + STOCK.length + '件</b>（' + src + '）';
+  log('売出データを読み込みました：新規' + add + '件' + (dup ? '／重複' + dup + '件は除外' : '') +
+      '／合計' + STOCK.length + '件');
 }
 
 window.addEventListener('DOMContentLoaded', () => {
